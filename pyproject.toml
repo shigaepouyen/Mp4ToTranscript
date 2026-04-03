@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mp4-to-transcript"
+version = "0.1.0"
+description = "CLI pour transcrire des fichiers audio/video en texte via Whisper."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openai-whisper",
+    "rich",
+]
+
+[project.optional-dependencies]
+diarization = [
+    "pyannote.audio",
+]
+
+[project.scripts]
+mp4-to-transcript = "mp4_to_transcript.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mp4_to_transcript*"]
