@@ -12,7 +12,7 @@ Depuis cette version, le rendu peut aussi sortir en `.md`, proposer un verbatim 
 
 ## Ce que j'ai ameliore par rapport au script initial
 
-- projet range dans un dossier dedie sous `shigaepouyen`
+- projet range dans un dossier dedie
 - packaging minimal avec `pyproject.toml`
 - wrapper compatible `Mp4ToTranscript.py`
 - README d'installation et d'usage
@@ -61,7 +61,7 @@ brew install ffmpeg
 Depuis le dossier du projet:
 
 ```bash
-cd /Users/jc/Documents/Scripts/shigaepouyen/Mp4ToTranscript
+cd Mp4ToTranscript
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -U pip
@@ -211,7 +211,7 @@ python3 Mp4ToTranscript.py --input /chemin/vers/audios --recursive --skip-existi
 python3 Mp4ToTranscript.py \
   --input /chemin/vers/reunion.m4a \
   --langue fr \
-  --prompt "Contexte: association Shiga, HelloAsso, conseil d'administration, billetterie, subventions."
+  --prompt "Contexte: reunion projet, budget, planning, clients, livrables."
 ```
 
 ## Options utiles
