@@ -1,57 +1,16 @@
 # Mp4ToTranscript
 
-Petit projet CLI pour prendre un fichier audio/video en entree et produire un fichier texte exploitable (`.txt` ou `.md`) avec Whisper.
+`Mp4ToTranscript` est un outil en ligne de commande qui transcrit des fichiers audio ou video avec Whisper et produit des fichiers texte (`.txt`) ou Markdown (`.md`).
 
-L'objectif reste volontairement simple:
-
-- entree: un fichier audio/video ou un dossier de fichiers
-- sortie: un ou plusieurs fichiers `.txt` ou `.md`
-- usage cible: verbatims exploitables ensuite pour des CR, comptes-rendus, notes ou documentation
-
-Depuis cette version, le rendu peut aussi sortir en `.md`, proposer un verbatim nettoye, generer un premier "CR de reunion" structure, sortir un `meeting-plus` plus exploitable et tenter une separation par intervenant via diarisation optionnelle.
-
-## Ce que j'ai ameliore par rapport au script initial
-
-- projet range dans un dossier dedie
-- packaging minimal avec `pyproject.toml`
-- wrapper compatible `Mp4ToTranscript.py`
-- README d'installation et d'usage
-- gestion plus sure des sorties: plus d'ecrasement silencieux
-- options `--skip-existing` et `--overwrite`
-- traitement batch plus propre avec un fichier combine et des fichiers individuels ranges dans `files/`
-- preservation de l'arborescence en mode dossier, ce qui evite les collisions de noms
-- option `--recursive` pour parcourir des sous-dossiers
-- option `--timestamps` pour garder des reperes temporels
-- option `--format md` pour un export Markdown exploitable tel quel
-- option `--mode-rendu clean` pour nettoyer automatiquement le verbatim
-- option `--mode-rendu meeting` pour generer un CR de reunion structure
-- option `--mode-rendu meeting-plus` pour un CR enrichi avec resume, sujets, decisions, actions, actions structurees et questions ouvertes
-- actions structurees avec extraction best effort de `responsable / tache / echeance / statut`
-- option `--speaker-separation` pour separer les interventions quand des labels locuteur sont disponibles
-- option `--diarize` pour produire ces labels avec `pyannote.audio` quand l'audio le permet
-- option `--llm-provider openai` pour enrichir le `meeting-plus` via OpenAI de facon optionnelle
-- detection automatique du device (`cuda`, `mps`, `cpu`) avec repli sur CPU
-- garde-fous Whisper contre les boucles de repetition sur longs audios: fallback de temperature et non-conditionnement sur le texte precedent par defaut
-- mode "reprise" possible si des transcriptions existent deja
-- quelques tests unitaires sur les fonctions critiques hors modele
-
-## Audit rapide du code initial
-
-Le script d'origine etait deja utile, mais presentait plusieurs fragilites pour un usage regulier:
-
-1. les sorties existantes etaient ecrasees sans confirmation
-2. en batch, les fichiers de sortie individuels pouvaient entrer en collision si plusieurs sources avaient le meme nom
-3. il n'y avait ni packaging, ni README, ni tests
-4. le traitement par dossier n'etait pas concu pour une reprise propre
-5. la structure restait monolithique, donc plus difficile a maintenir
+Il peut traiter un fichier unique ou un dossier complet, ajouter des timestamps, nettoyer le verbatim, produire une structure de compte-rendu, tenter une separation par intervenant et, en option, enrichir le compte-rendu avec OpenAI.
 
 ## Prerequis
 
 - Python 3.10+
-- FFmpeg installe sur la machine
-- dependances Python installees
+- FFmpeg et FFprobe disponibles dans le terminal
+- Dependances Python du projet
 
-### Installer FFmpeg sur macOS
+Installation de FFmpeg sur macOS:
 
 ```bash
 brew install ffmpeg
@@ -59,7 +18,7 @@ brew install ffmpeg
 
 ## Installation
 
-Depuis le dossier du projet:
+Dans le dossier du projet:
 
 ```bash
 cd Mp4ToTranscript
@@ -69,91 +28,131 @@ python3 -m pip install -U pip
 python3 -m pip install -r requirements.txt
 ```
 
-Optionnel, installation editable:
+Installation editable optionnelle:
 
 ```bash
 python3 -m pip install -e .
 ```
 
-Optionnel, pour la separation par intervenant:
+Dependances optionnelles pour la diarisation:
 
 ```bash
 python3 -m pip install -e ".[diarization]"
 ```
 
-Puis definir un token Hugging Face:
+La diarisation utilise Hugging Face. Definis un token avant d'utiliser `--diarize`:
 
 ```bash
 export HF_TOKEN="hf_xxx"
 ```
 
-## Utilisation
-
-### 1. Fichier unique vers un `.txt`
+## Commande De Base
 
 ```bash
 python3 Mp4ToTranscript.py --input /chemin/vers/reunion.m4a
 ```
 
-Sortie par defaut:
+Pour afficher toutes les options:
+
+```bash
+python3 Mp4ToTranscript.py --help
+```
+
+## Entrees Acceptees
+
+L'option `--input` accepte:
+
+- un fichier audio ou video;
+- un dossier contenant des fichiers audio ou video;
+- un dossier avec sous-dossiers si `--recursive` est utilise.
+
+Extensions supportees:
+
+```text
+.aac .flac .m4a .m4v .mkv .mov .mp3 .mp4 .mpeg .mpga .ogg .opus .wav .webm .wma
+```
+
+## Sorties
+
+Pour un fichier unique, la sortie par defaut est creee dans un dossier `transcripts` place a cote du fichier source:
 
 ```text
 /chemin/vers/transcripts/reunion.txt
 ```
 
-### 2. Fichier unique avec sortie explicite
-
-```bash
-python3 Mp4ToTranscript.py --input /chemin/vers/reunion.m4a --output /chemin/vers/reunion.txt
-```
-
-### 3. Dossier complet
-
-```bash
-python3 Mp4ToTranscript.py --input /chemin/vers/audios
-```
-
-Sorties par defaut:
+Pour un dossier, deux types de sorties sont crees:
 
 ```text
 /chemin/vers/audios/transcripts/transcription_complete.txt
 /chemin/vers/audios/transcripts/files/*.txt
 ```
 
-### 4. Dossier complet en recursive
+En mode dossier, `transcription_complete.txt` regroupe les transcriptions individuelles. Les fichiers individuels sont ranges dans `files/`. Avec `--recursive`, l'arborescence des sous-dossiers est conservee.
+
+## Exemples D'usage
+
+### Fichier Unique
 
 ```bash
-python3 Mp4ToTranscript.py --input /chemin/vers/audios --recursive
+python3 Mp4ToTranscript.py --input /chemin/vers/reunion.m4a
 ```
 
-Dans ce cas, la structure des sous-dossiers est conservee dans `files/`.
-
-### 5. Ajouter les timestamps
-
-```bash
-python3 Mp4ToTranscript.py --input /chemin/vers/reunion.m4a --timestamps
-```
-
-### 6. Exporter en Markdown nettoye
+### Fichier Unique Avec Sortie Explicite
 
 ```bash
 python3 Mp4ToTranscript.py \
   --input /chemin/vers/reunion.m4a \
-  --format md \
+  --output /chemin/vers/reunion.txt
+```
+
+### Dossier Complet
+
+```bash
+python3 Mp4ToTranscript.py --input /chemin/vers/audios
+```
+
+### Dossier Recursif
+
+```bash
+python3 Mp4ToTranscript.py \
+  --input /chemin/vers/audios \
+  --recursive
+```
+
+### Transcription Avec Timestamps
+
+```bash
+python3 Mp4ToTranscript.py \
+  --input /chemin/vers/reunion.m4a \
+  --timestamps
+```
+
+### Markdown
+
+```bash
+python3 Mp4ToTranscript.py \
+  --input /chemin/vers/reunion.m4a \
+  --format md
+```
+
+### Verbatim Nettoye
+
+```bash
+python3 Mp4ToTranscript.py \
+  --input /chemin/vers/reunion.m4a \
   --mode-rendu clean
 ```
 
-### 7. Generer un premier CR de reunion
+### Compte-Rendu Structure
 
 ```bash
 python3 Mp4ToTranscript.py \
   --input /chemin/vers/reunion.m4a \
   --format md \
-  --mode-rendu meeting \
-  --speaker-separation
+  --mode-rendu meeting
 ```
 
-### 8. Generer un CR enrichi local
+### Compte-Rendu Enrichi Local
 
 ```bash
 python3 Mp4ToTranscript.py \
@@ -162,7 +161,7 @@ python3 Mp4ToTranscript.py \
   --mode-rendu meeting-plus
 ```
 
-### 9. Generer un CR enrichi avec OpenAI
+### Compte-Rendu Enrichi Avec OpenAI
 
 ```bash
 export OPENAI_API_KEY="sk-xxx"
@@ -175,38 +174,7 @@ python3 Mp4ToTranscript.py \
   --llm-model gpt-5-mini
 ```
 
-Si l'appel OpenAI echoue, le script revient automatiquement au mode heuristique local.
-
-### 9.b Exemple de sortie `meeting-plus`
-
-```text
-## Actions structurees
-
-- Responsable: Paul | Tache: Paul prend le suivi budget pour le 15 avril | Echeance: 15 avril | Statut: a clarifier
-- Responsable: Collectif | Tache: On doit lancer la communication avant le prochain CA, a lancer | Echeance: Avant le prochain CA | Statut: a faire
-```
-
-### 10. Tenter une separation par intervenant
-
-```bash
-python3 Mp4ToTranscript.py \
-  --input /chemin/vers/reunion.m4a \
-  --format md \
-  --mode-rendu meeting \
-  --diarize \
-  --min-speakers 2 \
-  --max-speakers 6
-```
-
-`--diarize` active automatiquement `--speaker-separation`.
-
-### 11. Reprendre un lot sans retraiter les fichiers deja faits
-
-```bash
-python3 Mp4ToTranscript.py --input /chemin/vers/audios --recursive --skip-existing
-```
-
-### 12. Aider Whisper avec du jargon metier
+### Jargon, Acronymes Et Noms Propres
 
 ```bash
 python3 Mp4ToTranscript.py \
@@ -215,12 +183,176 @@ python3 Mp4ToTranscript.py \
   --prompt "Contexte: reunion projet, budget, planning, clients, livrables."
 ```
 
-Si une sortie existe deja, ajoute `--overwrite` pour la regenerer.
+### Reprise D'un Lot
 
-### 13. Relancer un audio qui part en repetition
+```bash
+python3 Mp4ToTranscript.py \
+  --input /chemin/vers/audios \
+  --recursive \
+  --skip-existing
+```
 
-Le script utilise maintenant par defaut les garde-fous Whisper contre les boucles de type `Les... Les...`.
-Pour un audio difficile avec silences longs, tu peux renforcer le filtrage:
+### Regeneration D'une Sortie
+
+```bash
+python3 Mp4ToTranscript.py \
+  --input /chemin/vers/reunion.m4a \
+  --overwrite
+```
+
+## Formats De Sortie
+
+`--format txt`
+
+Produit un fichier texte simple.
+
+`--format md`
+
+Produit un fichier Markdown avec titres et sections quand le mode de rendu le permet.
+
+`--format both`
+
+Produit une sortie `.txt` et une sortie `.md` pour chaque source.
+
+## Modes De Rendu
+
+`--mode-rendu raw`
+
+Transcription brute fournie par Whisper, apres normalisation minimale des espaces.
+
+`--mode-rendu clean`
+
+Verbatim nettoye: hesitations simples, espaces et ponctuation sont normalises.
+
+`--mode-rendu meeting`
+
+Compte-rendu structure avec sections de base, actions detectees, decisions detectees et deroule.
+
+`--mode-rendu meeting-plus`
+
+Compte-rendu enrichi avec participants, resume, sujets, decisions, actions, actions structurees, questions ouvertes et verbatim annexe.
+
+## Options Principales
+
+### Source Et Sortie
+
+- `--input`: fichier ou dossier source.
+- `--output`: fichier cible pour une source unique, ou dossier racine pour un lot.
+- `--recursive`: parcours des sous-dossiers.
+- `--combined-name`: nom du fichier combine en mode dossier.
+- `--skip-existing`: reutilise les sorties deja presentes.
+- `--overwrite`: ecrase les sorties existantes.
+- `--continue-on-error`: continue un lot meme si un fichier echoue.
+
+### Whisper
+
+- `--modele`, `--model`: modele Whisper a charger, par exemple `large` ou `turbo`.
+- `--device`: `auto`, `cpu`, `cuda` ou `mps`.
+- `--langue`, `--language`: langue de l'audio, par exemple `fr`.
+- `--prompt`: contexte donne a Whisper.
+- `--temperature`: temperature de depart du decoding.
+- `--temperature-increment-on-fallback`: increment utilise lorsque Whisper retente un segment.
+- `--condition-on-previous-text` / `--no-condition-on-previous-text`: reutilisation du texte precedent comme contexte.
+- `--carry-initial-prompt` / `--no-carry-initial-prompt`: repetition du prompt a chaque fenetre Whisper.
+- `--compression-ratio-threshold`: seuil de detection des sorties repetitives.
+- `--logprob-threshold`: seuil de fiabilite moyenne.
+- `--no-speech-threshold`: seuil de detection du silence.
+- `--word-timestamps`: timestamps au niveau des mots.
+- `--hallucination-silence-threshold`: filtrage de certains segments autour de silences longs.
+
+### Rendu
+
+- `--timestamps`: ajoute les timestamps par segment.
+- `--format`: `txt`, `md` ou `both`.
+- `--mode-rendu`: `raw`, `clean`, `meeting` ou `meeting-plus`.
+- `--speaker-separation`: regroupe les segments par locuteur quand des labels sont disponibles.
+
+### Diarisation
+
+- `--diarize`: active la diarisation avec `pyannote.audio`.
+- `--diarization-model`: modele Hugging Face utilise pour la diarisation.
+- `--hf-token`: token Hugging Face explicite.
+- `--min-speakers`: nombre minimum d'intervenants attendu.
+- `--max-speakers`: nombre maximum d'intervenants attendu.
+
+`--diarize` active automatiquement `--speaker-separation`.
+
+### OpenAI
+
+- `--llm-provider openai`: utilise OpenAI pour generer les sections de `meeting-plus`.
+- `--llm-model`: modele OpenAI utilise.
+- `--openai-api-key`: cle API explicite.
+
+La variable d'environnement `OPENAI_API_KEY` peut aussi etre utilisee.
+
+## Exemple De Sortie `meeting-plus`
+
+```text
+# CR enrichi - reunion.m4a
+
+- Source: `reunion.m4a`
+- Duree: 47m 21s
+- Langue detectee: `fr`
+- Generation CR: `heuristique locale`
+
+## Participants
+
+- Intervenants non identifies
+
+## Resume
+
+Resume automatique de la reunion.
+
+## Sujets abordes
+
+- Sujet principal detecte dans le verbatim.
+
+## Decisions
+
+- Decision detectee automatiquement.
+
+## Actions
+
+- Action detectee automatiquement.
+
+## Actions structurees
+
+- Responsable: Paul | Tache: Paul prend le suivi budget pour le 15 avril | Echeance: 15 avril | Statut: a clarifier
+```
+
+## Messages Et Depannage
+
+### Sortie Existante
+
+Si un fichier de sortie existe deja, le script s'arrete sauf si une option de reprise est fournie:
+
+```bash
+python3 Mp4ToTranscript.py --input /chemin/vers/reunion.m4a --skip-existing
+python3 Mp4ToTranscript.py --input /chemin/vers/reunion.m4a --overwrite
+```
+
+### Warning macOS `MallocStackLogging`
+
+Sur macOS, Python peut afficher ce message sur stderr:
+
+```text
+Python(...) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+```
+
+Ce warning provient du runtime macOS/Python. Si le fichier de sortie est produit, le message n'indique pas un echec de transcription.
+
+Une commande avec environnement nettoye peut etre utilisee si le message gene la lecture des logs:
+
+```bash
+env -u MallocStackLogging -u MallocStackLoggingNoCompact python3 Mp4ToTranscript.py \
+  --input /chemin/vers/reunion.m4a \
+  --langue fr \
+  --overwrite
+```
+
+### Sortie Repetitive
+
+Si Whisper produit une repetition longue sur un audio difficile, ajoute des options de segmentation et de contexte:
 
 ```bash
 python3 Mp4ToTranscript.py \
@@ -232,76 +364,9 @@ python3 Mp4ToTranscript.py \
   --overwrite
 ```
 
-`--hallucination-silence-threshold` active les timestamps par mot, donc c'est plus lent.
+`--hallucination-silence-threshold` active les timestamps par mot et peut augmenter la duree de traitement.
 
-### 14. Warning macOS `MallocStackLogging`
-
-Sur macOS, Python peut afficher ce message sur stderr:
-
-```text
-Python(...) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
-```
-
-Ce warning vient du runtime macOS/Python et n'indique pas un echec de transcription. Le script nettoie les variables d'environnement `Malloc*` au demarrage et avant les appels `ffprobe`, ce qui evite les cas les plus courants.
-
-Si le message reste visible mais que le fichier de sortie est produit, il peut etre ignore. En cas de doute, lance le script depuis le virtualenv ou avec un environnement nettoye:
-
-```bash
-env -u MallocStackLogging -u MallocStackLoggingNoCompact python3 Mp4ToTranscript.py \
-  --input /chemin/vers/reunion.m4a \
-  --langue fr \
-  --overwrite
-```
-
-## Options utiles
-
-```bash
-python3 Mp4ToTranscript.py --help
-```
-
-Options principales:
-
-- `--modele large` pour privilegier la qualite
-- `--modele turbo` pour aller plus vite
-- `--langue fr` pour eviter une mauvaise detection
-- `--timestamps` pour un verbatim source plus facile a citer
-- `--format md` pour produire un document Markdown
-- `--mode-rendu clean` pour nettoyer les hesitations et la ponctuation
-- `--mode-rendu meeting` pour une sortie "CR de reunion"
-- `--mode-rendu meeting-plus` pour un CR plus actionnable
-- `--temperature-increment-on-fallback` pour laisser Whisper retenter un segment rate/repetitif avec une temperature plus haute
-- `--condition-on-previous-text` pour revenir au comportement Whisper historique, si tu veux maximiser la continuite au risque de boucles sur longs audios
-- `--carry-initial-prompt` pour repeter ton `--prompt` a chaque fenetre Whisper
-- `--hallucination-silence-threshold 2.0` pour filtrer certains faux segments autour des silences longs
-- `--speaker-separation` pour exploiter les labels speaker quand ils existent
-- `--diarize` pour tenter de generer ces labels avec `pyannote.audio`
-- `--hf-token` ou la variable d'environnement `HF_TOKEN` pour autoriser le modele de diarisation
-- `--min-speakers` / `--max-speakers` pour cadrer le nombre d'intervenants
-- `--llm-provider openai` pour enrichir `meeting-plus` avec un LLM
-- `--llm-model` pour choisir le modele OpenAI
-- `--openai-api-key` ou `OPENAI_API_KEY` pour autoriser l'appel OpenAI
-- `--skip-existing` pour reprendre un lot
-- `--overwrite` pour regenarer les sorties
-- `--continue-on-error` pour ne pas bloquer tout un batch sur un seul fichier
-
-## Conseils d'usage pour des CR et docs
-
-- Pour un texte propre a retravailler ensuite dans un doc, commence sans `--timestamps`.
-- Pour une relecture ou pour retrouver une citation dans l'audio, active `--timestamps`.
-- Pour un CR rapidement partageable, essaye `--format md --mode-rendu meeting`.
-- Pour un CR plus propre sans editer a la main, essaye `--format md --mode-rendu meeting-plus`.
-- `meeting-plus` tente aussi de structurer les actions en `responsable / tache / echeance / statut`.
-- Les echeances reconnaissent maintenant mieux des formes comme `15 avril`, `avant le prochain CA`, `fin T2`.
-- Les responsables nommes directement dans le verbatim sont aussi reperes dans des formulations comme `Paul prend`, `Marie envoie`, `Jean doit`.
-- Avec `--llm-provider openai`, le meme schema est conserve, mais le remplissage des sections et des actions est en general plus propre.
-- Pour un verbatim plus lisible sans changer le fond, essaye `--mode-rendu clean`.
-- `--speaker-separation` ne fait effet que si des labels locuteur sont presents dans les segments fournis au rendu.
-- Si tu veux vraiment identifier les intervenants, ajoute `--diarize` et un token Hugging Face.
-- `--llm-provider openai` n'est jamais obligatoire: sans cle API, le script peut rester 100% local.
-- Si l'audio contient beaucoup de noms propres ou de jargon, passe un `--prompt`.
-- Si la machine rame, essaye `--modele turbo`.
-
-## Structure du projet
+## Structure Du Projet
 
 ```text
 Mp4ToTranscript/
@@ -315,13 +380,3 @@ Mp4ToTranscript/
 └── tests/
     └── test_cli.py
 ```
-
-## Limites connues
-
-- Le mode `meeting` fournit une premiere structure de CR, pas un resume "intelligent" garanti: une relecture humaine reste utile.
-- Le mode `meeting-plus` heuristique reste approximatif tant qu'aucun LLM n'est active.
-- La qualite depend fortement de l'audio source.
-- Le modele `large` est plus lent et plus gourmand en RAM.
-- La separation par intervenant reste "best effort": elle depend de la qualite micro, des chevauchements de voix et du nombre d'intervenants.
-- La diarisation necessite une dependance optionnelle (`pyannote.audio`) et un token Hugging Face pour charger le modele.
-- Le mode OpenAI consomme une API externe seulement si `--llm-provider openai` est demande explicitement.
