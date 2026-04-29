@@ -3,10 +3,14 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from mp4_to_transcript.cli import (
     assign_speakers_to_segments,
     build_batch_output_file,
+    build_temperature_schedule,
+    build_transcribe_options,
+    clean_macos_malloc_environment,
     cleanup_transcript_text,
     collect_input_files,
     count_pending_transcriptions,
@@ -284,6 +288,45 @@ class TranscriptRenderingTests(unittest.TestCase):
         self.assertIn("- Generation CR: `heuristique locale`", rendered)
 
 
+class WhisperOptionsTests(unittest.TestCase):
+    def test_clean_macos_malloc_environment_removes_noisy_native_flags(self) -> None:
+        with mock.patch.dict(
+            "os.environ",
+            {"MallocStackLogging": "0", "MallocStackLoggingNoCompact": "0", "OTHER": "kept"},
+            clear=True,
+        ):
+            cleaned = clean_macos_malloc_environment()
+
+            self.assertNotIn("MallocStackLogging", cleaned)
+            self.assertNotIn("MallocStackLoggingNoCompact", cleaned)
+            self.assertEqual(cleaned["OTHER"], "kept")
+
+    def test_temperature_schedule_matches_whisper_fallback_defaults(self) -> None:
+        self.assertEqual(
+            build_temperature_schedule(0.0, 0.2),
+            (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
+        )
+
+    def test_transcribe_options_avoid_previous_text_repetition_loops_by_default(self) -> None:
+        options = build_transcribe_options(language="fr", prompt="Contexte", temperature=0.0, device="cpu")
+
+        self.assertFalse(options["condition_on_previous_text"])
+        self.assertEqual(options["temperature"], (0.0, 0.2, 0.4, 0.6, 0.8, 1.0))
+        self.assertFalse(options["fp16"])
+
+    def test_hallucination_silence_threshold_enables_word_timestamps(self) -> None:
+        options = build_transcribe_options(
+            language="fr",
+            prompt=None,
+            temperature=0.0,
+            device="cpu",
+            hallucination_silence_threshold=2.0,
+        )
+
+        self.assertTrue(options["word_timestamps"])
+        self.assertEqual(options["hallucination_silence_threshold"], 2.0)
+
+
 class OutputFormatTests(unittest.TestCase):
     def test_resolve_output_targets_for_single_file_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -338,6 +381,24 @@ class ArgParsingTests(unittest.TestCase):
         self.assertEqual(args.llm_provider, "openai")
         self.assertEqual(args.llm_model, "gpt-5-mini")
         self.assertEqual(args.openai_api_key, "sk-test")
+
+    def test_parse_args_enables_word_timestamps_for_hallucination_guard(self) -> None:
+        args = parse_args(
+            [
+                "--input",
+                "/tmp/meeting.m4a",
+                "--hallucination-silence-threshold",
+                "2.0",
+            ]
+        )
+
+        self.assertTrue(args.word_timestamps)
+        self.assertEqual(args.hallucination_silence_threshold, 2.0)
+
+    def test_parse_args_can_reenable_previous_text_context(self) -> None:
+        args = parse_args(["--input", "/tmp/meeting.m4a", "--condition-on-previous-text"])
+
+        self.assertTrue(args.condition_on_previous_text)
 
 
 if __name__ == "__main__":

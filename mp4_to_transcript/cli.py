@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import os
 import re
@@ -42,6 +43,15 @@ DEFAULT_COMBINED_BASENAME = "transcription_complete"
 DEFAULT_OUTPUT_FORMAT = "txt"
 SUPPORTED_OUTPUT_FORMATS = ("txt", "md", "both")
 OUTPUT_SUFFIXES = {"txt": ".txt", "md": ".md", "both": ".md"}
+DEFAULT_TEMPERATURE = 0.0
+DEFAULT_TEMPERATURE_INCREMENT_ON_FALLBACK = 0.2
+DEFAULT_CONDITION_ON_PREVIOUS_TEXT = False
+DEFAULT_CARRY_INITIAL_PROMPT = False
+DEFAULT_COMPRESSION_RATIO_THRESHOLD = 2.4
+DEFAULT_LOGPROB_THRESHOLD = -1.0
+DEFAULT_NO_SPEECH_THRESHOLD = 0.6
+DEFAULT_WORD_TIMESTAMPS = False
+DEFAULT_HALLUCINATION_SILENCE_THRESHOLD = None
 DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
 DEFAULT_HF_TOKEN_ENV_VARS = ("HF_TOKEN", "HUGGINGFACE_TOKEN", "HUGGING_FACE_HUB_TOKEN")
 DEFAULT_LLM_PROVIDER = "none"
@@ -57,6 +67,13 @@ WORD_REPETITION_RE = re.compile(r"\b(\w{3,})\s+\1\b", re.IGNORECASE)
 SPACE_BEFORE_PUNCTUATION_RE = re.compile(r"\s+([,;:.!?])")
 MISSING_SPACE_AFTER_PUNCTUATION_RE = re.compile(r"([,;:.!?])(?=[^\s,;:.!?])")
 SPEAKER_TOKEN_RE = re.compile(r"(?i)^(?:speaker|spk|intervenant)[ _-]?0*(\d+)$")
+MACOS_MALLOC_ENV_VARS = (
+    "MallocStackLogging",
+    "MallocStackLoggingNoCompact",
+    "MallocScribble",
+    "MallocPreScribble",
+    "MallocGuardEdges",
+)
 
 
 class PlainConsole:
@@ -65,6 +82,14 @@ class PlainConsole:
 
 
 console = RichConsole() if RichConsole is not None else PlainConsole()
+
+
+def clean_macos_malloc_environment() -> dict[str, str]:
+    cleaned_env = dict(os.environ)
+    for env_name in MACOS_MALLOC_ENV_VARS:
+        os.environ.pop(env_name, None)
+        cleaned_env.pop(env_name, None)
+    return cleaned_env
 
 
 def load_whisper_module():
@@ -136,6 +161,7 @@ def probe_duration_seconds(file_path: Path) -> float | None:
         ],
         capture_output=True,
         text=True,
+        env=clean_macos_malloc_environment(),
         check=False,
     )
     if result.returncode != 0:
@@ -204,6 +230,13 @@ def normalize_transcript_text(text: str) -> str:
     cleaned = re.sub(r"[ \t]+", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
+
+
+def parse_optional_float(raw_value: str) -> float | None:
+    normalized = raw_value.strip().lower()
+    if normalized in {"none", "null", "off", "false"}:
+        return None
+    return float(raw_value)
 
 
 def cleanup_transcript_text(text: str) -> str:
@@ -1370,21 +1403,52 @@ def detect_device(requested_device: str) -> str:
     return "cpu"
 
 
+def build_temperature_schedule(
+    temperature: float,
+    temperature_increment_on_fallback: float | None,
+) -> float | tuple[float, ...]:
+    if temperature_increment_on_fallback is None or temperature_increment_on_fallback == 0:
+        return temperature
+
+    values: list[float] = []
+    current = temperature
+    while current <= 1.0 + 1e-9:
+        values.append(round(current, 10))
+        current += temperature_increment_on_fallback
+    return tuple(values) or temperature
+
+
 def build_transcribe_options(
     language: str | None,
     prompt: str | None,
     temperature: float,
     device: str,
+    temperature_increment_on_fallback: float | None = DEFAULT_TEMPERATURE_INCREMENT_ON_FALLBACK,
+    condition_on_previous_text: bool = DEFAULT_CONDITION_ON_PREVIOUS_TEXT,
+    carry_initial_prompt: bool = DEFAULT_CARRY_INITIAL_PROMPT,
+    compression_ratio_threshold: float | None = DEFAULT_COMPRESSION_RATIO_THRESHOLD,
+    logprob_threshold: float | None = DEFAULT_LOGPROB_THRESHOLD,
+    no_speech_threshold: float | None = DEFAULT_NO_SPEECH_THRESHOLD,
+    word_timestamps: bool = DEFAULT_WORD_TIMESTAMPS,
+    hallucination_silence_threshold: float | None = DEFAULT_HALLUCINATION_SILENCE_THRESHOLD,
 ) -> dict[str, Any]:
     options: dict[str, Any] = {
         "task": "transcribe",
         "verbose": False,
-        "temperature": temperature,
+        "temperature": build_temperature_schedule(temperature, temperature_increment_on_fallback),
+        "condition_on_previous_text": condition_on_previous_text,
+        "carry_initial_prompt": carry_initial_prompt,
+        "compression_ratio_threshold": compression_ratio_threshold,
+        "logprob_threshold": logprob_threshold,
+        "no_speech_threshold": no_speech_threshold,
+        "word_timestamps": word_timestamps or hallucination_silence_threshold is not None,
     }
     if language:
         options["language"] = language
     if prompt:
         options["initial_prompt"] = prompt
+    if hallucination_silence_threshold is not None:
+        options["hallucination_silence_threshold"] = hallucination_silence_threshold
     if device != "cuda":
         options["fp16"] = False
     return options
@@ -1397,10 +1461,31 @@ def run_whisper(
     prompt: str | None,
     temperature: float,
     device: str,
+    temperature_increment_on_fallback: float | None = DEFAULT_TEMPERATURE_INCREMENT_ON_FALLBACK,
+    condition_on_previous_text: bool = DEFAULT_CONDITION_ON_PREVIOUS_TEXT,
+    carry_initial_prompt: bool = DEFAULT_CARRY_INITIAL_PROMPT,
+    compression_ratio_threshold: float | None = DEFAULT_COMPRESSION_RATIO_THRESHOLD,
+    logprob_threshold: float | None = DEFAULT_LOGPROB_THRESHOLD,
+    no_speech_threshold: float | None = DEFAULT_NO_SPEECH_THRESHOLD,
+    word_timestamps: bool = DEFAULT_WORD_TIMESTAMPS,
+    hallucination_silence_threshold: float | None = DEFAULT_HALLUCINATION_SILENCE_THRESHOLD,
 ) -> dict[str, Any]:
     if model is None:
         raise RuntimeError("Aucun modele Whisper n'est charge alors qu'une transcription est necessaire.")
-    options = build_transcribe_options(language, prompt, temperature, device)
+    options = build_transcribe_options(
+        language=language,
+        prompt=prompt,
+        temperature=temperature,
+        device=device,
+        temperature_increment_on_fallback=temperature_increment_on_fallback,
+        condition_on_previous_text=condition_on_previous_text,
+        carry_initial_prompt=carry_initial_prompt,
+        compression_ratio_threshold=compression_ratio_threshold,
+        logprob_threshold=logprob_threshold,
+        no_speech_threshold=no_speech_threshold,
+        word_timestamps=word_timestamps,
+        hallucination_silence_threshold=hallucination_silence_threshold,
+    )
     return model.transcribe(str(file_path), **options)  # type: ignore[no-any-return]
 
 
@@ -1411,13 +1496,36 @@ def transcribe_source(
     prompt: str | None,
     temperature: float,
     device: str,
+    temperature_increment_on_fallback: float | None,
+    condition_on_previous_text: bool,
+    carry_initial_prompt: bool,
+    compression_ratio_threshold: float | None,
+    logprob_threshold: float | None,
+    no_speech_threshold: float | None,
+    word_timestamps: bool,
+    hallucination_silence_threshold: float | None,
     diarize: bool,
     diarization_model: str,
     diarization_token: str | None,
     min_speakers: int | None,
     max_speakers: int | None,
 ) -> dict[str, Any]:
-    result = run_whisper(model, file_path, language, prompt, temperature, device)
+    result = run_whisper(
+        model=model,
+        file_path=file_path,
+        language=language,
+        prompt=prompt,
+        temperature=temperature,
+        device=device,
+        temperature_increment_on_fallback=temperature_increment_on_fallback,
+        condition_on_previous_text=condition_on_previous_text,
+        carry_initial_prompt=carry_initial_prompt,
+        compression_ratio_threshold=compression_ratio_threshold,
+        logprob_threshold=logprob_threshold,
+        no_speech_threshold=no_speech_threshold,
+        word_timestamps=word_timestamps,
+        hallucination_silence_threshold=hallucination_silence_threshold,
+    )
     if not diarize:
         return result
 
@@ -1473,6 +1581,14 @@ def transcribe_media_file(
     language: str | None,
     prompt: str | None,
     temperature: float,
+    temperature_increment_on_fallback: float | None,
+    condition_on_previous_text: bool,
+    carry_initial_prompt: bool,
+    compression_ratio_threshold: float | None,
+    logprob_threshold: float | None,
+    no_speech_threshold: float | None,
+    word_timestamps: bool,
+    hallucination_silence_threshold: float | None,
     include_timestamps: bool,
     cleanup_mode: str,
     output_format: str,
@@ -1494,6 +1610,14 @@ def transcribe_media_file(
         prompt=prompt,
         temperature=temperature,
         device=device,
+        temperature_increment_on_fallback=temperature_increment_on_fallback,
+        condition_on_previous_text=condition_on_previous_text,
+        carry_initial_prompt=carry_initial_prompt,
+        compression_ratio_threshold=compression_ratio_threshold,
+        logprob_threshold=logprob_threshold,
+        no_speech_threshold=no_speech_threshold,
+        word_timestamps=word_timestamps,
+        hallucination_silence_threshold=hallucination_silence_threshold,
         diarize=diarize,
         diarization_model=diarization_model,
         diarization_token=diarization_token,
@@ -1526,6 +1650,18 @@ def load_whisper_model(whisper_module: Any, model_name: str, device: str) -> tup
         return whisper_module.load_model(model_name, device="cpu"), "cpu"
 
 
+def release_whisper_model(model: Any, device: str) -> None:
+    try:
+        del model
+        gc.collect()
+        if device == "mps":
+            import torch
+
+            torch.mps.empty_cache()
+    except Exception:
+        pass
+
+
 def transcribe_to_output(
     model: Any,
     source_file: Path,
@@ -1533,6 +1669,14 @@ def transcribe_to_output(
     language: str | None,
     prompt: str | None,
     temperature: float,
+    temperature_increment_on_fallback: float | None,
+    condition_on_previous_text: bool,
+    carry_initial_prompt: bool,
+    compression_ratio_threshold: float | None,
+    logprob_threshold: float | None,
+    no_speech_threshold: float | None,
+    word_timestamps: bool,
+    hallucination_silence_threshold: float | None,
     include_timestamps: bool,
     cleanup_mode: str,
     output_format: str,
@@ -1563,6 +1707,14 @@ def transcribe_to_output(
             prompt=prompt,
             temperature=temperature,
             device=device,
+            temperature_increment_on_fallback=temperature_increment_on_fallback,
+            condition_on_previous_text=condition_on_previous_text,
+            carry_initial_prompt=carry_initial_prompt,
+            compression_ratio_threshold=compression_ratio_threshold,
+            logprob_threshold=logprob_threshold,
+            no_speech_threshold=no_speech_threshold,
+            word_timestamps=word_timestamps,
+            hallucination_silence_threshold=hallucination_silence_threshold,
             diarize=diarize,
             diarization_model=diarization_model,
             diarization_token=diarization_token,
@@ -1606,6 +1758,14 @@ def transcribe_to_output(
         language=language,
         prompt=prompt,
         temperature=temperature,
+        temperature_increment_on_fallback=temperature_increment_on_fallback,
+        condition_on_previous_text=condition_on_previous_text,
+        carry_initial_prompt=carry_initial_prompt,
+        compression_ratio_threshold=compression_ratio_threshold,
+        logprob_threshold=logprob_threshold,
+        no_speech_threshold=no_speech_threshold,
+        word_timestamps=word_timestamps,
+        hallucination_silence_threshold=hallucination_silence_threshold,
         include_timestamps=include_timestamps,
         cleanup_mode=cleanup_mode,
         output_format=output_format,
@@ -1659,6 +1819,14 @@ def transcribe_single_file(model: Any, input_file: Path, output_file: Path, args
         language=args.langue,
         prompt=args.prompt,
         temperature=args.temperature,
+        temperature_increment_on_fallback=args.temperature_increment_on_fallback,
+        condition_on_previous_text=args.condition_on_previous_text,
+        carry_initial_prompt=args.carry_initial_prompt,
+        compression_ratio_threshold=args.compression_ratio_threshold,
+        logprob_threshold=args.logprob_threshold,
+        no_speech_threshold=args.no_speech_threshold,
+        word_timestamps=args.word_timestamps,
+        hallucination_silence_threshold=args.hallucination_silence_threshold,
         include_timestamps=args.timestamps,
         cleanup_mode=args.mode_rendu,
         output_format=args.format,
@@ -1733,6 +1901,14 @@ def transcribe_directory(
                         language=args.langue,
                         prompt=args.prompt,
                         temperature=args.temperature,
+                        temperature_increment_on_fallback=args.temperature_increment_on_fallback,
+                        condition_on_previous_text=args.condition_on_previous_text,
+                        carry_initial_prompt=args.carry_initial_prompt,
+                        compression_ratio_threshold=args.compression_ratio_threshold,
+                        logprob_threshold=args.logprob_threshold,
+                        no_speech_threshold=args.no_speech_threshold,
+                        word_timestamps=args.word_timestamps,
+                        hallucination_silence_threshold=args.hallucination_silence_threshold,
                         include_timestamps=args.timestamps,
                         cleanup_mode=args.mode_rendu,
                         output_format=args.format,
@@ -1779,6 +1955,14 @@ def transcribe_directory(
                     language=args.langue,
                     prompt=args.prompt,
                     temperature=args.temperature,
+                    temperature_increment_on_fallback=args.temperature_increment_on_fallback,
+                    condition_on_previous_text=args.condition_on_previous_text,
+                    carry_initial_prompt=args.carry_initial_prompt,
+                    compression_ratio_threshold=args.compression_ratio_threshold,
+                    logprob_threshold=args.logprob_threshold,
+                    no_speech_threshold=args.no_speech_threshold,
+                    word_timestamps=args.word_timestamps,
+                    hallucination_silence_threshold=args.hallucination_silence_threshold,
                     include_timestamps=args.timestamps,
                     cleanup_mode=args.mode_rendu,
                     output_format=args.format,
@@ -1883,8 +2067,65 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--temperature",
         type=float,
-        default=0.0,
-        help="Temperature de decoding Whisper. 0.0 est le plus stable pour un verbatim exploitable.",
+        default=DEFAULT_TEMPERATURE,
+        help="Temperature de depart du decoding Whisper.",
+    )
+    parser.add_argument(
+        "--temperature-increment-on-fallback",
+        type=parse_optional_float,
+        default=DEFAULT_TEMPERATURE_INCREMENT_ON_FALLBACK,
+        help=(
+            "Increment de temperature applique si Whisper detecte un segment rate ou repetitif. "
+            "0 ou `none` desactive le fallback."
+        ),
+    )
+    parser.add_argument(
+        "--condition-on-previous-text",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_CONDITION_ON_PREVIOUS_TEXT,
+        help=(
+            "Repasse le texte precedent comme contexte a Whisper. Desactive par defaut pour eviter "
+            "les boucles de repetition sur les longs audios."
+        ),
+    )
+    parser.add_argument(
+        "--carry-initial-prompt",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_CARRY_INITIAL_PROMPT,
+        help="Repete le prompt initial a chaque fenetre Whisper.",
+    )
+    parser.add_argument(
+        "--compression-ratio-threshold",
+        type=parse_optional_float,
+        default=DEFAULT_COMPRESSION_RATIO_THRESHOLD,
+        help="Seuil Whisper de detection des sorties trop repetitives. `none` le desactive.",
+    )
+    parser.add_argument(
+        "--logprob-threshold",
+        type=parse_optional_float,
+        default=DEFAULT_LOGPROB_THRESHOLD,
+        help="Seuil Whisper de detection des segments peu fiables. `none` le desactive.",
+    )
+    parser.add_argument(
+        "--no-speech-threshold",
+        type=parse_optional_float,
+        default=DEFAULT_NO_SPEECH_THRESHOLD,
+        help="Seuil Whisper de detection des silences. `none` le desactive.",
+    )
+    parser.add_argument(
+        "--word-timestamps",
+        action="store_true",
+        default=DEFAULT_WORD_TIMESTAMPS,
+        help="Demande a Whisper les timestamps par mot. Plus lent, utile contre certaines hallucinations.",
+    )
+    parser.add_argument(
+        "--hallucination-silence-threshold",
+        type=parse_optional_float,
+        default=DEFAULT_HALLUCINATION_SILENCE_THRESHOLD,
+        help=(
+            "Saute les silences longs autour d'une hallucination probable. Active automatiquement "
+            "--word-timestamps. Exemple: 2.0."
+        ),
     )
     parser.add_argument(
         "--timestamps",
@@ -1996,6 +2237,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     if args.temperature < 0:
         parser.error("--temperature doit etre positive ou nulle.")
 
+    if args.temperature_increment_on_fallback is not None and args.temperature_increment_on_fallback < 0:
+        parser.error("--temperature-increment-on-fallback doit etre positif ou nul.")
+
+    if args.compression_ratio_threshold is not None and args.compression_ratio_threshold <= 0:
+        parser.error("--compression-ratio-threshold doit etre strictement positif ou `none`.")
+
+    if args.no_speech_threshold is not None and args.no_speech_threshold < 0:
+        parser.error("--no-speech-threshold doit etre positif ou nul, ou `none`.")
+
+    if args.hallucination_silence_threshold is not None and args.hallucination_silence_threshold <= 0:
+        parser.error("--hallucination-silence-threshold doit etre strictement positif ou `none`.")
+
     if args.min_speakers is not None and args.min_speakers <= 0:
         parser.error("--min-speakers doit etre strictement positif.")
 
@@ -2020,10 +2273,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     if args.diarize:
         args.speaker_separation = True
 
+    if args.hallucination_silence_threshold is not None:
+        args.word_timestamps = True
+
     return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    clean_macos_malloc_environment()
     args = parse_args(argv)
 
     if not args.input:
@@ -2096,3 +2353,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except Exception as exc:
         console.print(f"[bold red]Echec pendant la transcription:[/bold red] {exc}")
         return 1
+    finally:
+        if model is not None:
+            model_to_release = model
+            model = None
+            release_whisper_model(model_to_release, active_device)

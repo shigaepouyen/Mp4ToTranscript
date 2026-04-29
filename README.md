@@ -31,6 +31,7 @@ Depuis cette version, le rendu peut aussi sortir en `.md`, proposer un verbatim 
 - option `--diarize` pour produire ces labels avec `pyannote.audio` quand l'audio le permet
 - option `--llm-provider openai` pour enrichir le `meeting-plus` via OpenAI de facon optionnelle
 - detection automatique du device (`cuda`, `mps`, `cpu`) avec repli sur CPU
+- garde-fous Whisper contre les boucles de repetition sur longs audios: fallback de temperature et non-conditionnement sur le texte precedent par defaut
 - mode "reprise" possible si des transcriptions existent deja
 - quelques tests unitaires sur les fonctions critiques hors modele
 
@@ -214,6 +215,44 @@ python3 Mp4ToTranscript.py \
   --prompt "Contexte: reunion projet, budget, planning, clients, livrables."
 ```
 
+Si une sortie existe deja, ajoute `--overwrite` pour la regenerer.
+
+### 13. Relancer un audio qui part en repetition
+
+Le script utilise maintenant par defaut les garde-fous Whisper contre les boucles de type `Les... Les...`.
+Pour un audio difficile avec silences longs, tu peux renforcer le filtrage:
+
+```bash
+python3 Mp4ToTranscript.py \
+  --input /chemin/vers/reunion.m4a \
+  --langue fr \
+  --prompt "Contexte: reunion projet, budget, planning, clients, livrables." \
+  --carry-initial-prompt \
+  --hallucination-silence-threshold 2.0 \
+  --overwrite
+```
+
+`--hallucination-silence-threshold` active les timestamps par mot, donc c'est plus lent.
+
+### 14. Warning macOS `MallocStackLogging`
+
+Sur macOS, Python peut afficher ce message sur stderr:
+
+```text
+Python(...) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+```
+
+Ce warning vient du runtime macOS/Python et n'indique pas un echec de transcription. Le script nettoie les variables d'environnement `Malloc*` au demarrage et avant les appels `ffprobe`, ce qui evite les cas les plus courants.
+
+Si le message reste visible mais que le fichier de sortie est produit, il peut etre ignore. En cas de doute, lance le script depuis le virtualenv ou avec un environnement nettoye:
+
+```bash
+env -u MallocStackLogging -u MallocStackLoggingNoCompact python3 Mp4ToTranscript.py \
+  --input /chemin/vers/reunion.m4a \
+  --langue fr \
+  --overwrite
+```
+
 ## Options utiles
 
 ```bash
@@ -230,6 +269,10 @@ Options principales:
 - `--mode-rendu clean` pour nettoyer les hesitations et la ponctuation
 - `--mode-rendu meeting` pour une sortie "CR de reunion"
 - `--mode-rendu meeting-plus` pour un CR plus actionnable
+- `--temperature-increment-on-fallback` pour laisser Whisper retenter un segment rate/repetitif avec une temperature plus haute
+- `--condition-on-previous-text` pour revenir au comportement Whisper historique, si tu veux maximiser la continuite au risque de boucles sur longs audios
+- `--carry-initial-prompt` pour repeter ton `--prompt` a chaque fenetre Whisper
+- `--hallucination-silence-threshold 2.0` pour filtrer certains faux segments autour des silences longs
 - `--speaker-separation` pour exploiter les labels speaker quand ils existent
 - `--diarize` pour tenter de generer ces labels avec `pyannote.audio`
 - `--hf-token` ou la variable d'environnement `HF_TOKEN` pour autoriser le modele de diarisation
