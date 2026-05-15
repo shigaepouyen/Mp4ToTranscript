@@ -9,7 +9,7 @@ description = "CLI pour transcrire des fichiers audio/video en texte via Whisper
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "openai-whisper",
+    "mlx-whisper",
     "rich",
 ]
 

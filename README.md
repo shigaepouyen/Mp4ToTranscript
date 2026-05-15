@@ -1,11 +1,14 @@
 # Mp4ToTranscript
 
-`Mp4ToTranscript` est un outil en ligne de commande qui transcrit des fichiers audio ou video avec Whisper et produit des fichiers texte (`.txt`) ou Markdown (`.md`).
+> **Requiert Apple Silicon (M1 ou superieur).** Ce projet utilise `mlx-whisper`, qui exploite le GPU Metal via le framework MLX d'Apple. Il ne fonctionne pas sur x86/Intel ni sur Linux/Windows.
+
+`Mp4ToTranscript` est un outil en ligne de commande qui transcrit des fichiers audio ou video avec Whisper (via MLX) et produit des fichiers texte (`.txt`) ou Markdown (`.md`).
 
 Il peut traiter un fichier unique ou un dossier complet, ajouter des timestamps, nettoyer le verbatim, produire une structure de compte-rendu, tenter une separation par intervenant et, en option, enrichir le compte-rendu avec OpenAI.
 
 ## Prerequis
 
+- Apple Silicon (M1, M2, M3, M4 ou superieur)
 - Python 3.10+
 - FFmpeg et FFprobe disponibles dans le terminal
 - Dependances Python du projet
@@ -246,14 +249,14 @@ Compte-rendu enrichi avec participants, resume, sujets, decisions, actions, acti
 
 ### Whisper
 
-- `--modele`, `--model`: modele Whisper a charger, par exemple `large` ou `turbo`.
-- `--device`: `auto`, `cpu`, `cuda` ou `mps`.
+- `--modele`, `--model`: repo HF du modele mlx-whisper, par exemple `mlx-community/whisper-large-v3-mlx` ou `mlx-community/whisper-medium-mlx`.
+- `--device`: ignore avec mlx-whisper, Metal est utilise automatiquement.
 - `--langue`, `--language`: langue de l'audio, par exemple `fr`.
 - `--prompt`: contexte donne a Whisper.
 - `--temperature`: temperature de depart du decoding.
 - `--temperature-increment-on-fallback`: increment utilise lorsque Whisper retente un segment.
 - `--condition-on-previous-text` / `--no-condition-on-previous-text`: reutilisation du texte precedent comme contexte.
-- `--carry-initial-prompt` / `--no-carry-initial-prompt`: repetition du prompt a chaque fenetre Whisper.
+- `--carry-initial-prompt` / `--no-carry-initial-prompt`: sans effet avec mlx-whisper (option conservee pour compatibilite).
 - `--compression-ratio-threshold`: seuil de detection des sorties repetitives.
 - `--logprob-threshold`: seuil de fiabilite moyenne.
 - `--no-speech-threshold`: seuil de detection du silence.

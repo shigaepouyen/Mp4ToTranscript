@@ -38,7 +38,7 @@ SUPPORTED_EXTENSIONS = {
     ".webm",
     ".wma",
 }
-DEFAULT_MODEL = "large"
+DEFAULT_MODEL = "mlx-community/whisper-large-v3-mlx"
 DEFAULT_COMBINED_BASENAME = "transcription_complete"
 DEFAULT_OUTPUT_FORMAT = "txt"
 SUPPORTED_OUTPUT_FORMATS = ("txt", "md", "both")
@@ -49,7 +49,7 @@ DEFAULT_CONDITION_ON_PREVIOUS_TEXT = False
 DEFAULT_CARRY_INITIAL_PROMPT = False
 DEFAULT_COMPRESSION_RATIO_THRESHOLD = 2.4
 DEFAULT_LOGPROB_THRESHOLD = -1.0
-DEFAULT_NO_SPEECH_THRESHOLD = 0.6
+DEFAULT_NO_SPEECH_THRESHOLD = 0.3
 DEFAULT_WORD_TIMESTAMPS = False
 DEFAULT_HALLUCINATION_SILENCE_THRESHOLD = None
 DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
@@ -94,24 +94,21 @@ def clean_macos_malloc_environment() -> dict[str, str]:
 
 def load_whisper_module():
     try:
-        import whisper  # type: ignore
+        import mlx_whisper  # type: ignore
     except ImportError as exc:
         raise RuntimeError(
-            "Le package `openai-whisper` n'est pas installe. "
-            "Installe-le avec `python3 -m pip install -U openai-whisper`."
+            "Le package `mlx-whisper` n'est pas installe. "
+            "Installe-le avec `python3 -m pip install -U mlx-whisper`."
         ) from exc
 
-    if not hasattr(whisper, "load_model"):
-        module_file = getattr(whisper, "__file__", "inconnu")
+    if not hasattr(mlx_whisper, "transcribe"):
+        module_file = getattr(mlx_whisper, "__file__", "inconnu")
         raise RuntimeError(
-            "Le module `whisper` charge actuellement un mauvais package et pas `openai-whisper`.\n"
-            f"Module detecte: {module_file}\n"
-            "Corrige avec:\n"
-            "  python3 -m pip uninstall -y whisper\n"
-            "  python3 -m pip install -U openai-whisper"
+            f"Le module `mlx_whisper` charge est invalide (pas de `transcribe`).\n"
+            f"Module detecte: {module_file}"
         )
 
-    return whisper
+    return mlx_whisper
 
 
 def ensure_ffmpeg_available() -> None:
@@ -1437,7 +1434,6 @@ def build_transcribe_options(
         "verbose": False,
         "temperature": build_temperature_schedule(temperature, temperature_increment_on_fallback),
         "condition_on_previous_text": condition_on_previous_text,
-        "carry_initial_prompt": carry_initial_prompt,
         "compression_ratio_threshold": compression_ratio_threshold,
         "logprob_threshold": logprob_threshold,
         "no_speech_threshold": no_speech_threshold,
@@ -1449,8 +1445,6 @@ def build_transcribe_options(
         options["initial_prompt"] = prompt
     if hallucination_silence_threshold is not None:
         options["hallucination_silence_threshold"] = hallucination_silence_threshold
-    if device != "cuda":
-        options["fp16"] = False
     return options
 
 
@@ -1486,7 +1480,8 @@ def run_whisper(
         word_timestamps=word_timestamps,
         hallucination_silence_threshold=hallucination_silence_threshold,
     )
-    return model.transcribe(str(file_path), **options)  # type: ignore[no-any-return]
+    import mlx_whisper  # type: ignore
+    return mlx_whisper.transcribe(str(file_path), path_or_hf_repo=model, **options)  # type: ignore[no-any-return]
 
 
 def transcribe_source(
@@ -1638,28 +1633,13 @@ def transcribe_media_file(
 
 
 def load_whisper_model(whisper_module: Any, model_name: str, device: str) -> tuple[Any, str]:
-    try:
-        return whisper_module.load_model(model_name, device=device), device
-    except TypeError:
-        return whisper_module.load_model(model_name), "cpu"
-    except Exception:
-        if device == "cpu":
-            raise
-
-        console.print(f"[yellow]Echec du chargement sur {device}, repli sur cpu.[/yellow]")
-        return whisper_module.load_model(model_name, device="cpu"), "cpu"
+    # mlx_whisper loads on first transcribe call via path_or_hf_repo; no pre-load step needed
+    return model_name, "mlx"
 
 
 def release_whisper_model(model: Any, device: str) -> None:
-    try:
-        del model
-        gc.collect()
-        if device == "mps":
-            import torch
-
-            torch.mps.empty_cache()
-    except Exception:
-        pass
+    # mlx_whisper manages Metal memory automatically; nothing to release
+    gc.collect()
 
 
 def transcribe_to_output(
@@ -2051,13 +2031,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         dest="modele",
         default=DEFAULT_MODEL,
-        help="Modele Whisper. `large` pour privilegier la precision, `turbo` pour aller plus vite.",
+        help="Modele mlx-whisper (HF repo). Ex: `mlx-community/whisper-large-v3-mlx`, `mlx-community/whisper-medium-mlx`.",
     )
     parser.add_argument(
         "--device",
         choices=("auto", "cpu", "cuda", "mps"),
         default="auto",
-        help="Device PyTorch pour Whisper. `auto` essaie cuda, puis mps, puis cpu.",
+        help="Ignore avec mlx-whisper (Metal utilise automatiquement sur Apple Silicon). Conserve pour compatibilite.",
     )
     parser.add_argument(
         "--prompt",
