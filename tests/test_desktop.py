@@ -62,7 +62,7 @@ class WorkerTests(unittest.TestCase):
 try:
     from PySide6.QtCore import QSettings, QProcess
     from PySide6.QtWidgets import QApplication
-    from mp4_to_transcript.desktop import Window
+    from mp4_to_transcript.desktop import Window, prepare_macos_platform
 except ImportError:
     Window = None
 
@@ -71,6 +71,7 @@ except ImportError:
 class WindowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.platform_directory = prepare_macos_platform()
         cls.app = QApplication.instance() or QApplication([])
 
     def test_add_deduplicates_folders_retry_and_preferences_exclude_secrets(self):

@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QSettings, QTimer, QDir, QLibraryInfo
+from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QSettings, QTimer, QDir, QLibraryInfo, QEvent
 from PySide6.QtGui import QAction, QColor, QPalette, QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
@@ -20,6 +20,39 @@ from PySide6.QtWidgets import (
 )
 
 from .cli import collect_input_files
+
+
+class DesktopApplication(QApplication):
+    def __init__(self, arguments):
+        self.main_window = None
+        self.pending_files = []
+        super().__init__(arguments)
+
+    def event(self, event):
+        if event.type() == QEvent.Type.FileOpen:
+            path = event.file()
+            if path:
+                self.pending_files.append(path)
+                # Batch several macOS events and keep file scanning out of dispatch.
+                QTimer.singleShot(0, self.flush_files)
+                event.accept()
+                return True
+        return super().event(event)
+
+    def attach_window(self, window):
+        self.main_window = window
+        self.flush_files()
+
+    def flush_files(self):
+        if self.main_window is None or not self.pending_files:
+            return
+        paths, self.pending_files = self.pending_files, []
+        self.main_window.add_paths(paths)
+        self.main_window.showNormal()
+        self.main_window.raise_()
+        self.main_window.activateWindow()
+        self.main_window.status.setText("Fichiers ajoutés depuis macOS. Choisissez le profil, puis Transcrire.")
+        print(f"Opened {len(paths)} file(s) from macOS", flush=True)
 
 
 class Window(QMainWindow):
@@ -448,10 +481,13 @@ def prepare_macos_platform():
     Cocoa plugin in a private temporary directory lets Qt discover it normally.
     Keep the returned directory alive until QApplication exits.
     """
-    if sys.platform != "darwin" or os.environ.get("QT_QPA_PLATFORM"):
+    if sys.platform != "darwin":
+        return None
+    platform = os.environ.get("QT_QPA_PLATFORM", "cocoa")
+    if platform not in {"cocoa", "offscreen", "minimal"}:
         return None
     directory = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)) / "platforms"
-    plugin = directory / "libqcocoa.dylib"
+    plugin = directory / f"libq{platform}.dylib"
     if plugin.is_file() and plugin.name not in QDir(str(directory)).entryList():
         temporary = tempfile.TemporaryDirectory(prefix="mp4-transcript-qt-")
         shutil.copyfile(plugin, Path(temporary.name) / plugin.name)
@@ -462,7 +498,7 @@ def prepare_macos_platform():
 
 def main():
     platform_directory = prepare_macos_platform()
-    app = QApplication(sys.argv)
+    app = DesktopApplication(sys.argv)
     app.setApplicationName("Mp4ToTranscript")
     app.setWindowIcon(QIcon(str(Path(__file__).resolve().parent / "assets" / "app-icon.png")))
     app.setStyle("Fusion")
@@ -478,17 +514,25 @@ def main():
     app.setPalette(palette)
     app.setStyleSheet(STYLE)
     window = Window()
+    app.attach_window(window)
     window.show()
     if "--smoke-test" in sys.argv:
         def verify_window():
-            visible = window.isVisible() and window.windowHandle().isExposed()
+            # A different foreground window may fully occlude this one during a
+            # Launch Services test. That is not a failure to create/show it.
+            visible = window.isVisible()
             print(f"platform={app.platformName()} window_visible={visible}", flush=True)
+            report = os.environ.get("MP4_APP_SMOKE_REPORT")
+            if report:
+                Path(report).write_text(json.dumps({"visible": visible, "pid": os.getpid(),
+                    "sources": [job["source"] for job in window.jobs],
+                    "icon_loaded": not app.windowIcon().isNull(), "python": sys.executable}))
             screenshot = os.environ.get("MP4_APP_SMOKE_SCREENSHOT")
             if screenshot:
                 window.grab().save(screenshot)
             window.close()
             app.exit(0 if visible else 1)
-        QTimer.singleShot(1500, verify_window)
+        QTimer.singleShot(int(os.environ.get("MP4_APP_SMOKE_DELAY_MS", "1500")), verify_window)
     elif len(sys.argv) > 1:
         window.add_paths(sys.argv[1:])
     result = app.exec()
