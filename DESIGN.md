@@ -12,3 +12,7 @@ States use text: waiting, processing stage, completed, error, cancelled. The
 progress indicator is indeterminate while Whisper runs; no invented percentage.
 Advanced settings use a compact dedicated dialog to preserve queue and preview
 space on small Mac screens. No decorative animation.
+
+Long transcripts open in a separate resizable reader with zoom and full-screen
+controls. Processing shows five numbered stages, elapsed time, and a persistent
+model-cache status. Never imply a download when local model files are reused.

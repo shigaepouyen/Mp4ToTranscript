@@ -16,6 +16,11 @@ def options():
 
 
 class WorkerTests(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(worker, "resolve_model", return_value="/local/test-model")
+        self.model = patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_cache_reuses_transcription_for_new_render_but_invalidates_audio_and_prompt(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -28,6 +33,8 @@ class WorkerTests(unittest.TestCase):
                 config.update(mode="raw", timestamps=True)
                 second = worker.process(source, config, root / "cache")
                 self.assertEqual(transcribe.call_count, 1)
+                self.assertEqual(self.model.call_count, 1)
+                self.assertEqual(transcribe.call_args.args[0], "/local/test-model")
                 self.assertNotEqual(first, second)
                 self.assertEqual(Path(first[0]).read_text(), "Bonjour")
                 config["prompt"] = "Nouveau contexte"
@@ -57,6 +64,36 @@ class WorkerTests(unittest.TestCase):
                 self.assertEqual(len(outputs), 2)
                 self.assertEqual(transcribe.call_count, 1)
                 self.assertTrue(all(call.kwargs["llm_provider"] == "none" for call in render.call_args_list))
+
+
+class ModelResolutionTests(unittest.TestCase):
+    def model_directory(self, root):
+        root.mkdir()
+        (root / "config.json").write_text("{}")
+        (root / "weights.npz").write_bytes(b"weights")
+        return root
+
+    def test_cached_model_never_requests_download(self):
+        with tempfile.TemporaryDirectory() as directory:
+            local = self.model_directory(Path(directory) / "snapshot")
+            with mock.patch("huggingface_hub.snapshot_download", return_value=str(local)) as download, mock.patch.object(worker, "emit") as emit:
+                self.assertEqual(worker.resolve_model("owner/model"), str(local))
+                download.assert_called_once_with(repo_id="owner/model", local_files_only=True)
+                self.assertTrue(any("aucun téléchargement" in c.kwargs.get("text", "") for c in emit.call_args_list))
+
+    def test_incomplete_cache_triggers_download_and_does_not_claim_cached(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            partial = root / "partial"
+            partial.mkdir()
+            (partial / "config.json").write_text("{}")
+            local = self.model_directory(root / "complete")
+            with mock.patch("huggingface_hub.snapshot_download", side_effect=[str(partial), str(local)]) as download, mock.patch.object(worker, "emit") as emit:
+                self.assertEqual(worker.resolve_model("owner/model"), str(local))
+                self.assertEqual(download.call_count, 2)
+                self.assertNotIn("local_files_only", download.call_args.kwargs)
+                self.assertTrue(any("Téléchargement du modèle" == c.kwargs.get("text") for c in emit.call_args_list))
+                self.assertFalse(any("déjà présent" in c.kwargs.get("text", "") for c in emit.call_args_list))
 
 
 try:
@@ -100,6 +137,25 @@ class WindowTests(unittest.TestCase):
             self.app.processEvents()
             time.sleep(0.01)
         self.assertTrue(predicate(), "Process did not reach expected state")
+
+    def test_large_reader_preserves_full_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "test.wav"
+            source.touch()
+            output = root / "transcript.md"
+            content = "Un paragraphe de transcription.\n" * 300
+            output.write_text(content)
+            window = Window(QSettings(str(root / "prefs.ini"), QSettings.Format.IniFormat))
+            window.add_paths([str(source)])
+            window.jobs[0].update(state="Terminé", outputs=[str(output)])
+            window.table.selectRow(0)
+            window.show_transcript()
+            self.assertEqual(window.viewer.text.toPlainText(), content)
+            self.assertTrue(window.viewer.text.isReadOnly())
+            self.assertGreaterEqual(window.viewer.width(), 1000)
+            window.viewer.close()
+            window.close()
 
     def test_cancel_stops_worker_and_preserves_next_file(self):
         with tempfile.TemporaryDirectory() as directory:
