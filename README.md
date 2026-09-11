@@ -23,6 +23,15 @@ Pour créer un lanceur utilisable par double-clic ou depuis le Dock :
 open dist/Mp4ToTranscript.app
 ```
 
+**Où est l’application ?** Le script crée `Mp4ToTranscript.app` dans le dossier
+`dist` du projet. Dans le Finder, ouvrir ce dossier puis double-cliquer sur
+`Mp4ToTranscript.app`. Il n’est pas nécessaire de relancer les commandes
+d’installation à chaque utilisation.
+
+Pour un accès quotidien, glisser `Mp4ToTranscript.app` dans le Dock. Le lanceur
+peut aussi être déplacé dans Applications, mais le dossier du projet et son
+environnement `.venv` doivent rester à leur emplacement d’origine.
+
 Le `.app` contient une copie du code et utilise l’environnement Python avec lequel
 il a été construit. Conserver cet environnement au même emplacement ; reconstruire
 le lanceur après une mise à jour du code. Ce lanceur personnel n’est pas une
