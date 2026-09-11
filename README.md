@@ -32,6 +32,12 @@ Pour un accès quotidien, glisser `Mp4ToTranscript.app` dans le Dock. Le lanceur
 peut aussi être déplacé dans Applications, mais le dossier du projet et son
 environnement `.venv` doivent rester à leur emplacement d’origine.
 
+Le glisser-déposer est pris en charge **dans la fenêtre**, pas sur l’icône du Dock.
+L’application dispose d’une icône dans le Finder et le Dock. Après mise à jour,
+relancer l’application pour voir la nouvelle icône. Sa source vectorielle est
+dans `mp4_to_transcript/assets/app-icon.svg` ; `scripts/build_icon.py` régénère
+les fichiers PNG et ICNS.
+
 Le `.app` contient une copie du code et utilise l’environnement Python avec lequel
 il a été construit. Conserver cet environnement au même emplacement ; reconstruire
 le lanceur après une mise à jour du code. Ce lanceur personnel n’est pas une

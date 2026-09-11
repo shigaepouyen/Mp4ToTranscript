@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QSettings, QTimer, QDir, QLibraryInfo
-from PySide6.QtGui import QAction, QColor, QPalette
+from PySide6.QtGui import QAction, QColor, QPalette, QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit,
@@ -464,6 +464,7 @@ def main():
     platform_directory = prepare_macos_platform()
     app = QApplication(sys.argv)
     app.setApplicationName("Mp4ToTranscript")
+    app.setWindowIcon(QIcon(str(Path(__file__).resolve().parent / "assets" / "app-icon.png")))
     app.setStyle("Fusion")
     palette = app.style().standardPalette()
     for role, color in [(QPalette.ColorRole.Window, "#fafafa"),

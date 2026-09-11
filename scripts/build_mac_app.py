@@ -24,6 +24,7 @@ def build(destination: Path, python: str = sys.executable) -> Path:
     source = Path(__file__).resolve().parents[1] / "mp4_to_transcript"
     shutil.copytree(source, resources / "mp4_to_transcript", dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy2(source / "assets" / "AppIcon.icns", resources / "AppIcon.icns")
     launcher = macos / "Mp4ToTranscript"
     launcher.write_text('#!/bin/sh\n'
                         'cd "$(dirname "$0")/../Resources" || exit 1\n'
@@ -40,7 +41,8 @@ def build(destination: Path, python: str = sys.executable) -> Path:
     with (contents / "Info.plist").open("wb") as stream:
         plistlib.dump({"CFBundleName": "Mp4ToTranscript", "CFBundleDisplayName": "Mp4ToTranscript",
                       "CFBundleIdentifier": "io.github.shigaepouyen.mp4totranscript",
-                      "CFBundleVersion": "1", "CFBundleShortVersionString": "0.2.0",
+                      "CFBundleVersion": "2", "CFBundleShortVersionString": "0.2.1",
+                      "CFBundleIconFile": "AppIcon.icns",
                       "CFBundleExecutable": "Mp4ToTranscript", "CFBundlePackageType": "APPL",
                       "NSHighResolutionCapable": True}, stream)
     return bundle
