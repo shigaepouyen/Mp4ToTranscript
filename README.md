@@ -6,6 +6,70 @@
 
 Il peut traiter un fichier unique ou un dossier complet, ajouter des timestamps, nettoyer le verbatim, produire une structure de compte-rendu, tenter une separation par intervenant et, en option, enrichir le compte-rendu avec OpenAI.
 
+## Application Mac
+
+Une interface locale est disponible en complément de la commande existante :
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[desktop]"
+.venv/bin/python -m mp4_to_transcript.desktop
+```
+
+Pour créer un lanceur utilisable par double-clic ou depuis le Dock :
+
+```bash
+.venv/bin/python scripts/build_mac_app.py
+open dist/Mp4ToTranscript.app
+```
+
+Le `.app` contient une copie du code et utilise l’environnement Python avec lequel
+il a été construit. Conserver cet environnement au même emplacement ; reconstruire
+le lanceur après une mise à jour du code. Ce lanceur personnel n’est pas une
+distribution autonome signée pour d’autres Mac.
+
+La version Qt est fixée à 6.8.3, validée avec une vraie fenêtre macOS. En cas
+d’échec du lanceur, son journal `~/Library/Logs/Mp4ToTranscript/launch.log`
+s’ouvre dans TextEdit au lieu d’un échec silencieux.
+
+### Utilisation
+
+1. Déposer des fichiers ou dossiers **dans la fenêtre**, ou utiliser les boutons
+   Ajouter. Les sous-dossiers sont inclus et les doublons ignorés.
+2. Choisir Texte nettoyé, Transcription brute ou Compte rendu, puis Transcrire.
+3. Sélectionner un résultat pour le prévisualiser, le copier ou l’afficher dans le Finder.
+
+Les réglages (langue, format, modèle, timestamps, contexte et destination) sont
+mémorisés. Les fichiers sont traités successivement dans un processus séparé.
+Arrêter la file annule le traitement courant et conserve les suivants en attente.
+« Remettre en attente » permet de réessayer ou de créer un autre rendu.
+La file elle-même est conservée uniquement pendant la session.
+
+Les exports ne remplacent jamais un fichier existant : un suffixe numérique est
+ajouté en cas de collision. Par défaut, ils sont dans `transcripts`, à côté de
+chaque source. Un dossier ajouté produit des exports individuels ; le regroupement
+et la diarisation restent disponibles dans la CLI.
+
+Le cache local de transcription se trouve dans `~/Library/Caches/Mp4ToTranscript`
+(modifiable avec `MP4_TRANSCRIPT_CACHE_DIR`). Changer le format, le profil ou les
+timestamps réutilise ce cache. Changer le contenu audio, la langue, le modèle ou
+le contexte recalcule la transcription. Ce cache contient du texte et peut être
+supprimé à tout moment lorsque l’app est arrêtée.
+
+OpenAI est désactivé au lancement. L’option d’enrichissement, dans Réglages,
+envoie **le texte** à OpenAI et utilise une clé saisie pour la session ou
+`OPENAI_API_KEY`. La clé n’est pas enregistrée. Sans cette option, le compte rendu
+est structuré par les règles locales existantes, pas par un modèle de synthèse.
+Le moteur existant revient au rendu local si OpenAI échoue ; le mode de génération
+est indiqué dans le compte rendu. Le premier usage d’un modèle absent du Mac
+nécessite son téléchargement depuis Hugging Face.
+
+### Validation
+
+```bash
+QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -v
+```
+
 ## Prerequis
 
 - Apple Silicon (M1, M2, M3, M4 ou superieur)
