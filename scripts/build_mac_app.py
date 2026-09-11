@@ -42,7 +42,7 @@ def build(destination: Path, python: str = sys.executable) -> Path:
     with (contents / "Info.plist").open("wb") as stream:
         plistlib.dump({"CFBundleName": "Mp4ToTranscript", "CFBundleDisplayName": "Mp4ToTranscript",
                       "CFBundleIdentifier": "io.github.shigaepouyen.mp4totranscript",
-                      "CFBundleVersion": "3", "CFBundleShortVersionString": "0.3.0",
+                      "CFBundleVersion": "4", "CFBundleShortVersionString": "0.4.0",
                       "CFBundleIconFile": "AppIcon.icns",
                       "CFBundleExecutable": "Mp4ToTranscript", "CFBundlePackageType": "APPL",
                       "NSHighResolutionCapable": True,

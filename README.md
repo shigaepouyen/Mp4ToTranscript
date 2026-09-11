@@ -65,6 +65,20 @@ glisser la nouvelle copie du `.app`.
 2. Choisir Texte nettoyé, Transcription brute ou Compte rendu, puis Transcrire.
 3. Sélectionner un résultat pour le prévisualiser, le copier ou l’afficher dans le Finder.
 
+**Lire en grand** ouvre le transcript complet dans une fenêtre indépendante,
+redimensionnable, avec plein écran, zoom et copie. Échap quitte le plein écran.
+
+Le traitement affiche cinq étapes : vérification du fichier, vérification du
+modèle, préparation du moteur, transcription, création du résultat. Le temps
+écoulé reste visible pendant les étapes longues. Il ne s’agit pas d’un pourcentage
+estimé de transcription.
+
+L’app vérifie la configuration et les poids du modèle dans le cache local avant
+toute requête de téléchargement. S’ils sont présents, elle transmet leur chemin
+local à Whisper et indique « aucun téléchargement du modèle ». Si ces fichiers
+manquent, elle annonce le téléchargement. Charger un modèle **en mémoire** n’est
+pas le télécharger. Une transcription déjà en cache évite même ce chargement.
+
 Les réglages (langue, format, modèle, timestamps, contexte et destination) sont
 mémorisés. Les fichiers sont traités successivement dans un processus séparé.
 Arrêter la file annule le traitement courant et conserve les suivants en attente.

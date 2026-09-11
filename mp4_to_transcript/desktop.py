@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QSettings, QTimer, QDir, QLibraryInfo, QEvent
@@ -20,6 +21,50 @@ from PySide6.QtWidgets import (
 )
 
 from .cli import collect_input_files
+
+
+class TranscriptViewer(QMainWindow):
+    def __init__(self, path: Path, parent=None):
+        super().__init__(parent, Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setWindowTitle(path.name)
+        self.resize(1050, 800)
+        root = QWidget()
+        layout = QVBoxLayout(root)
+        layout.setContentsMargins(22, 20, 22, 20)
+        self.text = QPlainTextEdit()
+        self.text.setReadOnly(True)
+        self.text.setStyleSheet("QPlainTextEdit { font-size: 17px; padding: 18px; }")
+        self.text.setPlainText(path.read_text(encoding="utf-8"))
+        bar = QHBoxLayout()
+        copy = QPushButton("Copier tout le texte")
+        copy.clicked.connect(lambda: QApplication.clipboard().setText(self.text.toPlainText()))
+        smaller = QPushButton("A−")
+        smaller.setAccessibleName("Réduire le texte")
+        smaller.clicked.connect(lambda: self.text.zoomOut(1))
+        larger = QPushButton("A+")
+        larger.setAccessibleName("Agrandir le texte")
+        larger.clicked.connect(lambda: self.text.zoomIn(1))
+        full = QPushButton("Plein écran")
+        def toggle_fullscreen():
+            if self.isFullScreen():
+                self.showNormal()
+                full.setText("Plein écran")
+            else:
+                self.showFullScreen()
+                full.setText("Quitter le plein écran")
+        full.clicked.connect(toggle_fullscreen)
+        for button in (copy, smaller, larger):
+            bar.addWidget(button)
+        bar.addStretch()
+        bar.addWidget(full)
+        layout.addLayout(bar)
+        layout.addWidget(self.text, 1)
+        self.setCentralWidget(root)
+        escape = QAction(self)
+        escape.setShortcut("Escape")
+        escape.triggered.connect(lambda: toggle_fullscreen() if self.isFullScreen() else self.close())
+        self.addAction(escape)
 
 
 class DesktopApplication(QApplication):
@@ -68,6 +113,8 @@ class Window(QMainWindow):
         self.buffer = ""
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
         self.logs = ""
+        self.viewer = None
+        self.started_at = None
         self.setWindowTitle("Mp4ToTranscript")
         self.resize(980, 730)
         self.setMinimumSize(820, 650)
@@ -187,10 +234,13 @@ class Window(QMainWindow):
         actions = QHBoxLayout()
         self.copy_button = QPushButton("Copier le texte")
         self.copy_button.clicked.connect(self.copy_result)
+        self.expand_button = QPushButton("Lire en grand")
+        self.expand_button.clicked.connect(self.show_transcript)
         self.open_button = QPushButton("Afficher dans le Finder")
         self.open_button.clicked.connect(self.reveal_result)
         self.retry_button = QPushButton("Remettre en attente")
         self.retry_button.clicked.connect(self.retry_selected)
+        actions.addWidget(self.expand_button)
         actions.addWidget(self.copy_button)
         actions.addWidget(self.open_button)
         actions.addStretch()
@@ -199,7 +249,10 @@ class Window(QMainWindow):
         bottom = QHBoxLayout()
         self.status = QLabel("Ajoutez un enregistrement pour commencer.")
         self.status.setWordWrap(True)
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
         bottom.addWidget(self.status, 1)
+        self.elapsed = QLabel()
+        bottom.addWidget(self.elapsed)
         self.cancel_button = QPushButton("Arrêter la file")
         self.cancel_button.clicked.connect(self.cancel)
         bottom.addWidget(self.cancel_button)
@@ -208,6 +261,17 @@ class Window(QMainWindow):
         self.start_button.clicked.connect(self.start)
         bottom.addWidget(self.start_button)
         layout.addLayout(bottom)
+        self.detail = QLabel()
+        self.detail.setWordWrap(True)
+        self.detail.setTextFormat(Qt.TextFormat.PlainText)
+        self.model_notice = QLabel()
+        self.model_notice.setWordWrap(True)
+        self.model_notice.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.detail)
+        layout.addWidget(self.model_notice)
+        self.clock = QTimer(self)
+        self.clock.setInterval(1000)
+        self.clock.timeout.connect(self.update_elapsed)
         self.progress = QProgressBar()
         self.progress.setTextVisible(False)
         self.progress.setFixedHeight(5)
@@ -291,6 +355,7 @@ class Window(QMainWindow):
         has_output = bool(self.selected() and self.selected()["outputs"])
         self.copy_button.setEnabled(has_output)
         self.open_button.setEnabled(has_output)
+        self.expand_button.setEnabled(has_output)
 
     def remove_selected(self):
         rows = {index.row() for index in self.table.selectedIndexes()}
@@ -321,6 +386,24 @@ class Window(QMainWindow):
         QApplication.clipboard().setText(self.preview.toPlainText())
         self.status.setText("Texte copié.")
 
+    def show_transcript(self):
+        job = self.selected()
+        if not job or not job["outputs"]:
+            return
+        try:
+            viewer = TranscriptViewer(Path(job["outputs"][0]), self)
+        except OSError as exc:
+            QMessageBox.warning(self, "Résultat indisponible", str(exc))
+            return
+        self.viewer = viewer
+        viewer.show()
+        viewer.raise_()
+
+    def update_elapsed(self):
+        if self.started_at is not None:
+            seconds = int(time.monotonic() - self.started_at)
+            self.elapsed.setText(f"{seconds // 60:02d}:{seconds % 60:02d} écoulées")
+
     def reveal_result(self):
         job = self.selected()
         if job and job["outputs"]:
@@ -344,6 +427,8 @@ class Window(QMainWindow):
         pending = next((j for j in self.jobs if j["state"] == "En attente"), None)
         if self.cancelled or pending is None:
             self.running = False
+            self.clock.stop()
+            self.detail.setText("Vous pouvez sélectionner un résultat puis cliquer sur Lire en grand." if not self.cancelled else "Les fichiers déjà terminés restent disponibles.")
             self.active = None
             self.progress.setRange(0, 1)
             self.progress.setValue(0 if self.cancelled else 1)
@@ -362,6 +447,12 @@ class Window(QMainWindow):
         self.buffer = ""
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
         self.logs = ""
+        self.started_at = time.monotonic()
+        self.clock.start()
+        self.update_elapsed()
+        self.status.setText("Démarrage du traitement…")
+        self.detail.setText("Préparation du processus de transcription.")
+        self.model_notice.setText("Le modèle sera vérifié avant tout téléchargement.")
         self.progress.setRange(0, 0)
         process = QProcess(self)
         self.process = process
@@ -398,7 +489,11 @@ class Window(QMainWindow):
                 continue
             if event["event"] == "status":
                 self.active["state"] = event["text"]
-                self.status.setText(f"{Path(self.active['source']).name} · {event['text']}")
+                prefix = f"Étape {event['step']}/5 · " if "step" in event else ""
+                self.status.setText(prefix + event["text"])
+                self.detail.setText(event.get("detail", ""))
+            elif event["event"] == "model":
+                self.model_notice.setText(event["text"])
             elif event["event"] == "done":
                 self.active["outputs"] = event["outputs"]
                 self.active["state"] = "Terminé"
