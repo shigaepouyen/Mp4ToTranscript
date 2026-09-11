@@ -32,7 +32,11 @@ Pour un accès quotidien, glisser `Mp4ToTranscript.app` dans le Dock. Le lanceur
 peut aussi être déplacé dans Applications, mais le dossier du projet et son
 environnement `.venv` doivent rester à leur emplacement d’origine.
 
-Le glisser-déposer est pris en charge **dans la fenêtre**, pas sur l’icône du Dock.
+Le glisser-déposer est pris en charge **dans la fenêtre et sur l’icône du Dock**,
+même si l’app est fermée. Les fichiers ou dossiers sont ajoutés à la file ;
+choisir ensuite un profil et cliquer sur Transcrire. Un dépôt ne déclenche pas
+automatiquement de traitement ni d’appel OpenAI. « Ouvrir avec » dans le Finder
+fonctionne également. L’app ne remplace pas votre lecteur multimédia par défaut.
 L’application dispose d’une icône dans le Finder et le Dock. Après mise à jour,
 relancer l’application pour voir la nouvelle icône. Sa source vectorielle est
 dans `mp4_to_transcript/assets/app-icon.svg` ; `scripts/build_icon.py` régénère
@@ -43,9 +47,16 @@ il a été construit. Conserver cet environnement au même emplacement ; reconst
 le lanceur après une mise à jour du code. Ce lanceur personnel n’est pas une
 distribution autonome signée pour d’autres Mac.
 
-La version Qt est fixée à 6.8.3, validée avec une vraie fenêtre macOS. En cas
-d’échec du lanceur, son journal `~/Library/Logs/Mp4ToTranscript/launch.log`
-s’ouvre dans TextEdit au lieu d’un échec silencieux.
+La version Qt est fixée à 6.8.3, validée avec une vraie fenêtre macOS. Le journal
+du lanceur se trouve dans `~/Library/Logs/Mp4ToTranscript/launch.log`.
+Le build utilise les outils de ligne de commande Xcode (`xcrun clang`) et un
+Python macOS de type framework (par exemple Python Homebrew). Le lanceur natif
+charge ce Python dans son propre processus pour conserver l’identité de l’app,
+son icône et la réception des fichiers envoyés par macOS.
+
+Si le Finder conserve une ancienne icône après reconstruction, quitter puis
+relancer l’app. Si nécessaire, retirer uniquement son raccourci du Dock et y
+glisser la nouvelle copie du `.app`.
 
 ### Utilisation
 
@@ -83,6 +94,13 @@ nécessite son téléchargement depuis Hugging Face.
 
 ```bash
 QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -v
+```
+
+Test macOS de l’ouverture via le Dock/Finder (app isolée, fichiers de test,
+fenêtre refermée automatiquement) :
+
+```bash
+.venv/bin/python scripts/test_mac_open.py
 ```
 
 ## Prerequis
