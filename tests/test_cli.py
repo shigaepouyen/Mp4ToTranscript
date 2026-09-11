@@ -312,7 +312,8 @@ class WhisperOptionsTests(unittest.TestCase):
 
         self.assertFalse(options["condition_on_previous_text"])
         self.assertEqual(options["temperature"], (0.0, 0.2, 0.4, 0.6, 0.8, 1.0))
-        self.assertFalse(options["fp16"])
+        # MLX manages precision itself; the former CPU/CUDA option is omitted.
+        self.assertNotIn("fp16", options)
 
     def test_hallucination_silence_threshold_enables_word_timestamps(self) -> None:
         options = build_transcribe_options(
