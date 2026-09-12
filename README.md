@@ -1,3 +1,5 @@
+![Status: WIP](https://img.shields.io/badge/status-WIP-yellow)
+
 # Mp4ToTranscript
 
 > **Requiert Apple Silicon (M1 ou superieur).** Ce projet utilise `mlx-whisper`, qui exploite le GPU Metal via le framework MLX d'Apple. Il ne fonctionne pas sur x86/Intel ni sur Linux/Windows.
