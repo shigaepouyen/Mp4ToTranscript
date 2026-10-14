@@ -176,7 +176,7 @@ Ce lot apporte des gains même si la migration vers SwiftUI ne se fait pas, ou e
 
 ```
 Mp4ToTranscript.app
-├── SwiftUI (cible macOS 26, minimum macOS 15 si un collègue n'est pas à jour ; arm64)
+├── SwiftUI (macOS 26 minimum : toi et tes collègues y êtes tous ; arm64)
 │   ├── WindowGroup unique : NavigationSplitView (Historique | Dépôt → Progression → Résultat)
 │   ├── Settings scene (Général · Modèles · Enrichissement)
 │   ├── AVFoundation : décodage → WAV 16 kHz temporaire (remplace FFmpeg)
