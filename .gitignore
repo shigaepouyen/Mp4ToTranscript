@@ -6,3 +6,5 @@ transcripts/
 dist/
 build/
 *.egg-info/
+.build/
+.swiftpm/
