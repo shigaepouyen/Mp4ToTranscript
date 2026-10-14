@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QSettings, QTimer, QDir, QLibraryInfo, QEvent
-from PySide6.QtGui import QAction, QColor, QPalette, QIcon
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit,
@@ -99,11 +99,10 @@ class DesktopApplication(QApplication):
         if self.main_window is None or not self.pending_files:
             return
         paths, self.pending_files = self.pending_files, []
-        self.main_window.add_paths(paths)
         self.main_window.showNormal()
         self.main_window.raise_()
         self.main_window.activateWindow()
-        self.main_window.status.setText("Fichiers ajoutés depuis macOS. Choisissez le profil, puis Transcrire.")
+        self.main_window.add_and_start(paths)
         print(f"Opened {len(paths)} file(s) from macOS", flush=True)
 
 
@@ -122,6 +121,7 @@ class Window(QMainWindow):
         self.logs = ""
         self.viewer = None
         self.started_at = None
+        self.auto_start = True
         self.setWindowTitle("Mp4ToTranscript")
         self.resize(980, 730)
         self.setMinimumSize(820, 650)
@@ -131,13 +131,12 @@ class Window(QMainWindow):
         layout = QVBoxLayout(root)
         layout.setContentsMargins(28, 24, 28, 22)
         layout.setSpacing(16)
-        heading = QLabel("Vos enregistrements, en texte.")
-        heading.setObjectName("heading")
-        layout.addWidget(heading)
         self.drop = QLabel("Déposez vos fichiers ou dossiers ici\nAudio et vidéo · traitement sur votre Mac")
         self.drop.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.drop.setMinimumHeight(86)
         self.drop.setObjectName("drop")
+        self.drop.setAccessibleName("Zone de dépôt des enregistrements")
+        self.drop.setStyleSheet(DROP_STYLE)
         layout.addWidget(self.drop)
         buttons = QHBoxLayout()
         self.add_button = QPushButton("Ajouter des fichiers…")
@@ -218,6 +217,8 @@ class Window(QMainWindow):
         self.key.setEchoMode(QLineEdit.EchoMode.Password)
         self.key.setPlaceholderText("Clé API pour cette session, ou OPENAI_API_KEY")
         fields.addRow("Clé OpenAI", self.key)
+        self.key.setEnabled(self.cloud.isChecked())
+        self.cloud.toggled.connect(self.key.setEnabled)
         notice = QLabel("Si activé, le texte est envoyé à OpenAI et des frais API peuvent s’appliquer.\nLe mode local produit un compte rendu par règles, sans synthèse IA.")
         notice.setWordWrap(True)
         fields.addRow(notice)
@@ -271,7 +272,7 @@ class Window(QMainWindow):
         self.cancel_button.clicked.connect(self.cancel)
         bottom.addWidget(self.cancel_button)
         self.start_button = QPushButton("Transcrire")
-        self.start_button.setObjectName("primary")
+        self.start_button.setDefault(True)
         self.start_button.clicked.connect(self.start)
         bottom.addWidget(self.start_button)
         layout.addLayout(bottom)
@@ -288,7 +289,6 @@ class Window(QMainWindow):
         self.clock.timeout.connect(self.update_elapsed)
         self.progress = QProgressBar()
         self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(5)
         layout.addWidget(self.progress)
         self.tray = QSystemTrayIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume), self)
         self.tray.setToolTip("Mp4ToTranscript")
@@ -312,12 +312,13 @@ class Window(QMainWindow):
 
     def choose_files(self):
         paths, _ = QFileDialog.getOpenFileNames(self, "Ajouter des enregistrements", "", "Audio et vidéo (*.aac *.flac *.m4a *.m4v *.mkv *.mov *.mp3 *.mp4 *.mpeg *.mpga *.ogg *.opus *.wav *.webm *.wma);;Tous les fichiers (*)")
-        self.add_paths(paths)
+        if paths:
+            self.add_and_start(paths)
 
     def choose_folder(self):
         path = QFileDialog.getExistingDirectory(self, "Ajouter un dossier (sous-dossiers inclus)")
         if path:
-            self.add_paths([path])
+            self.add_and_start([path])
 
     def choose_output(self):
         path = QFileDialog.getExistingDirectory(self, "Dossier des résultats")
@@ -326,11 +327,37 @@ class Window(QMainWindow):
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls() and any(url.isLocalFile() for url in event.mimeData().urls()):
+            self.set_drop_highlight(True)
             event.acceptProposedAction()
 
+    def dragLeaveEvent(self, event):
+        self.set_drop_highlight(False)
+
     def dropEvent(self, event):
-        self.add_paths([url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()])
+        self.set_drop_highlight(False)
+        self.add_and_start([url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()])
         event.acceptProposedAction()
+
+    def set_drop_highlight(self, active):
+        self.drop.setProperty("active", active)
+        self.drop.style().unpolish(self.drop)
+        self.drop.style().polish(self.drop)
+
+    def add_and_start(self, paths):
+        """Dropped or opened files start right away with the saved profile."""
+        self.add_paths(paths)
+        if not self.auto_start or self.running or not any(j["state"] == "En attente" for j in self.jobs):
+            return
+        if self.options()["cloud"]:
+            answer = QMessageBox.question(
+                self, "Envoyer le texte à OpenAI ?",
+                "L’enrichissement OpenAI est activé : le texte transcrit sera envoyé à OpenAI.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                self.status.setText("Fichiers en attente. Cliquez sur Transcrire pour lancer.")
+                return
+        self.start()
 
     def add_paths(self, paths):
         errors = []
@@ -370,9 +397,18 @@ class Window(QMainWindow):
         self.controls.setEnabled(not self.running)
         self.advanced.setEnabled(not self.running)
         has_output = bool(self.selected() and self.selected()["outputs"])
-        self.copy_button.setEnabled(has_output)
-        self.open_button.setEnabled(has_output)
-        self.expand_button.setEnabled(has_output)
+        for button in (self.copy_button, self.open_button, self.expand_button):
+            button.setEnabled(has_output)
+            button.setVisible(has_output)
+        # Show only what can be used now, rather than a row of disabled controls.
+        self.cancel_button.setVisible(self.running)
+        self.elapsed.setVisible(self.running)
+        self.progress.setVisible(self.running)
+        self.clear_button.setVisible(bool(self.jobs) and not self.running)
+        self.retry_button.setVisible(not self.running and self.selected() is not None
+                                     and self.selected()["state"] != "En attente")
+        self.detail.setVisible(bool(self.detail.text()))
+        self.model_notice.setVisible(bool(self.model_notice.text()))
 
     def remove_selected(self):
         rows = {index.row() for index in self.table.selectedIndexes()}
@@ -565,25 +601,10 @@ class Window(QMainWindow):
             event.accept()
 
 
-STYLE = """
-QWidget { font-size: 13px; color: #20231d; }
-QMainWindow { background: #fafafa; }
-QLabel#heading { font-size: 25px; font-weight: 600; }
-QLabel#drop { background: #f3f4f1; border: 1px dashed #869079; border-radius: 10px; color: #444b3b; font-size: 14px; }
-QPushButton { min-height: 26px; padding: 3px 12px; border: 1px solid #c7cbc2; border-radius: 6px; background: #fff; }
-QPushButton:hover { background: #eef0ea; }
-QPushButton:pressed { background: #dde2d4; }
-QPushButton:focus { border: 2px solid #536432; }
-QPushButton:disabled { color: #767b70; background: #f0f1ee; border-color: #dfe1da; }
-QPushButton#primary { background: #3e5026; color: #fff; border-color: #3e5026; font-weight: 600; padding: 5px 22px; }
-QPushButton#primary:hover { background: #30421b; }
-QPushButton#primary:disabled { background: #e2e5dc; color: #666e5c; border-color: #dfe1da; }
-QComboBox, QLineEdit { min-height: 27px; padding: 2px 8px; background: #fff; color: #20231d; }
-QComboBox QAbstractItemView { background: #fff; color: #20231d; selection-background-color: #dbe3ce; selection-color: #20231d; }
-QTableWidget, QPlainTextEdit { background: #fff; alternate-background-color: #f6f7f4; border: 1px solid #dcded7; border-radius: 5px; selection-background-color: #dbe3ce; selection-color: #20231d; }
-QHeaderView::section { background: #f1f3ee; color: #444b3b; border: none; padding: 8px; text-align: left; }
-QProgressBar { border: none; background: #e8ebe2; border-radius: 2px; }
-QProgressBar::chunk { background: #536432; }
+# Everything else uses the native macOS style: dark mode and the accent colour follow the system.
+DROP_STYLE = """
+QLabel#drop { border: 1px dashed palette(mid); border-radius: 10px; padding: 12px; }
+QLabel#drop[active="true"] { border: 2px solid palette(highlight); }
 """
 
 
@@ -615,19 +636,9 @@ def main():
     app = DesktopApplication(sys.argv)
     app.setApplicationName("Mp4ToTranscript")
     app.setWindowIcon(QIcon(str(Path(__file__).resolve().parent / "assets" / "app-icon.png")))
-    app.setStyle("Fusion")
-    palette = app.style().standardPalette()
-    for role, color in [(QPalette.ColorRole.Window, "#fafafa"),
-                        (QPalette.ColorRole.Base, "#ffffff"),
-                        (QPalette.ColorRole.Button, "#ffffff"),
-                        (QPalette.ColorRole.Text, "#20231d"),
-                        (QPalette.ColorRole.WindowText, "#20231d"),
-                        (QPalette.ColorRole.ButtonText, "#20231d")]:
-        palette.setColor(role, QColor(color))
-    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#606657"))
-    app.setPalette(palette)
-    app.setStyleSheet(STYLE)
     window = Window()
+    # Smoke tests open placeholder files; they must not start a transcription.
+    window.auto_start = "--smoke-test" not in sys.argv
     app.attach_window(window)
     window.show()
     if "--smoke-test" in sys.argv:
@@ -648,7 +659,7 @@ def main():
             app.exit(0 if visible else 1)
         QTimer.singleShot(int(os.environ.get("MP4_APP_SMOKE_DELAY_MS", "1500")), verify_window)
     elif len(sys.argv) > 1:
-        window.add_paths(sys.argv[1:])
+        window.add_and_start(sys.argv[1:])
     result = app.exec()
     if platform_directory:
         platform_directory.cleanup()

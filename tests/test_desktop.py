@@ -111,7 +111,7 @@ class ModelResolutionTests(unittest.TestCase):
 
 try:
     from PySide6.QtCore import QSettings, QProcess
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QMessageBox
     from mp4_to_transcript.desktop import Window, prepare_macos_platform
 except ImportError:
     Window = None
@@ -133,6 +133,39 @@ class WindowTests(unittest.TestCase):
                 descriptions.add(window.profile_description.text())
             self.assertEqual(len(descriptions), 3)
             self.assertTrue(all(len(text) > 30 for text in descriptions))
+            window.close()
+
+    def test_drop_starts_immediately_unless_openai_is_declined(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "a.wav").touch()
+            (root / "b.wav").touch()
+            window = Window(QSettings(str(root / "prefs.ini"), QSettings.Format.IniFormat))
+            with mock.patch.object(window, "start") as start:
+                window.add_and_start([str(root / "a.wav")])
+                start.assert_called_once()
+            window.profile.setCurrentIndex(window.profile.findData("meeting-plus"))
+            window.cloud.setChecked(True)
+            with mock.patch.object(window, "start") as start, \
+                    mock.patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
+                window.add_and_start([str(root / "b.wav")])
+                start.assert_not_called()
+            window.auto_start = False
+            with mock.patch.object(window, "start") as start:
+                window.add_and_start([str(root)])
+                start.assert_not_called()
+            window.close()
+
+    def test_idle_window_hides_unusable_controls_and_openai_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = Window(QSettings(str(Path(directory) / "prefs.ini"), QSettings.Format.IniFormat))
+            for widget in (window.cancel_button, window.progress, window.copy_button,
+                           window.open_button, window.expand_button, window.retry_button,
+                           window.clear_button):
+                self.assertTrue(widget.isHidden(), widget)
+            self.assertFalse(window.key.isEnabled())
+            window.cloud.setChecked(True)
+            self.assertTrue(window.key.isEnabled())
             window.close()
 
     def test_add_deduplicates_folders_retry_and_preferences_exclude_secrets(self):
