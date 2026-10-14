@@ -14,20 +14,20 @@ Ce cadrage s'appuie sur tes réponses aux questions de la phase 1.
 
 | # | Sujet | Décision | Effet sur l'audit |
 |---|---|---|---|
-| 1 | Pour qui | Usage personnel, mais à donner à 1 ou 2 collègues | La distribution devient **Majeure** : il faudra signature, notarisation, Python et FFmpeg embarqués |
+| 1 | Pour qui | Usage personnel, mais à donner à 1 ou 2 collègues. **Pas de compte Apple Developer pour l'instant** | Python et FFmpeg doivent être embarqués. Sans compte, l'app ne peut avoir qu'une signature *ad hoc*, sans notarisation : chaque collègue devra lever le blocage de Gatekeeper à la main (voir T2) |
 | 2 | Changer de stack | Oui | La recommandation SwiftUI est chiffrée et assumée (lot 3) |
 | 3 | Usage | Un fichier à la fois | La file d'attente permanente n'est pas justifiée à l'écran |
 | 4 | Dépôt | Le dépôt lance la transcription | Profil et langue doivent être visibles *avant* le dépôt |
 | 5 | Forme | Une fenêtre compacte, plus le dépôt sur l'icône du Dock | Pas d'app de barre des menus ; l'icône de barre des menus actuelle est à retirer |
 | 6 | Lecture | Le résultat se lit dans un autre outil ; l'app montre un aperçu Coup d'œil | L'aperçu intégré et le lecteur « Lire en grand » sont à supprimer |
-| 7 | Séparation des intervenants | Non tranché (question pas comprise, voir plus bas) | Je la laisse hors de l'app et la signale comme un écart |
+| 7 | Séparation des intervenants | **Non**, pas dans l'app | Elle reste disponible en ligne de commande. Pas de pyannote ni de torch dans l'app, donc pas de jeton Hugging Face à demander |
 | 8 | Langue | Français, anglais moins souvent | La langue reste visible, en compact ; le format passe dans les Réglages |
 | 9 | OpenAI | Accord sur l'option par défaut | La clé va dans le Trousseau ; OpenAI reste désactivé par défaut |
 | 10 | Modèle par défaut | « Le plus performant » | large-v3 reste le défaut, avec une réserve (voir T8) |
 | 11 | Historique | Requis | La fenêtre a besoin d'une barre latérale repliable |
 | 12 | Matériel | Apple Silicon uniquement | Confirmé |
 
-**Précision sur la question 7.** La « séparation des intervenants », c'est le fait d'étiqueter le texte par personne (« Intervenant 1 : … », « Intervenant 2 : … »). Ta description initiale la présentait comme une option de l'app. **Elle n'existe aujourd'hui qu'en ligne de commande** (`--diarize`, `cli.py:329-434`). Elle impose `pyannote.audio`, torch (1 à 2 Go de plus [Hypothèse]) et un jeton Hugging Face. Il reste donc une question à trancher : as-tu besoin de savoir « qui a dit quoi » dans tes comptes rendus ? Si oui, c'est un chantier à part entière, qui pèse sur le poids et sur la distribution.
+**Sur la question 7.** La séparation des intervenants (« Intervenant 1 : … ») n'existe qu'en ligne de commande (`--diarize`, `cli.py:329-434`). Tu as confirmé qu'elle ne doit pas entrer dans l'app. Il faudra donc décrire l'app sans cette option, au lieu de la mentionner comme tu l'avais fait au départ.
 
 **Réserve sur la question 10.** « Performant » est ambigu. Si cela veut dire « le plus précis », c'est large-v3, le réglage actuel. Si cela veut dire « le meilleur compromis », c'est probablement large-v3-turbo : une précision proche en français, un traitement plusieurs fois plus rapide, et environ la moitié du poids et de la mémoire [Hypothèse fondée sur les caractéristiques publiques des modèles]. Je garde large-v3 par défaut, conformément à ta réponse. Mais je recommande de comparer les deux sur 2 ou 3 de tes propres enregistrements avant de figer ce choix.
 
@@ -40,9 +40,9 @@ Ce cadrage s'appuie sur tes réponses aux questions de la phase 1.
 **Les 3 problèmes les plus graves :**
 1. **L'apparence native est désactivée volontairement.** Le style Fusion, la palette claire forcée et la feuille de style maison suppriment le mode sombre, la couleur d'accentuation et l'aspect des contrôles système (`desktop.py:550-610`).
 2. **La fenêtre est trop grande et trop chargée pour un usage à un seul fichier.** Elle impose un minimum de 820×650, empile 11 bandes, fait doublon entre la zone de dépôt et la file, et affiche trois lignes de statut. Il n'y a ni barre des menus, ni Cmd+, ni historique.
-3. **L'app n'est pas transmissible.** Le lanceur dépend du `.venv` du développeur et d'un FFmpeg installé par Homebrew, et il n'est ni signé ni notarisé.
+3. **L'app n'est pas transmissible.** Le lanceur dépend du `.venv` du développeur et d'un FFmpeg installé par Homebrew. Sans compte développeur, même une app autonome restera bloquée par Gatekeeper chez tes collègues : il faudra contourner ce blocage à la main.
 
-**Est-ce une vraie app Mac aujourd'hui ?** Non. **Peut-elle le devenir avec la stack actuelle ?** En partie : en Qt, on peut atteindre environ 70 % du résultat (style natif, menus, Cmd+, fenêtre compacte). Mais la barre d'outils unifiée, la fenêtre Réglages au standard macOS, Coup d'œil, les notifications, le Trousseau, l'icône au format macOS 26 et une distribution propre exigent tous de contourner Qt. **Ma recommandation : une interface SwiftUI qui pilote le worker Python existant**, avec un Python relocalisable embarqué dans l'app. Cela représente environ 15 à 25 jours de travail.
+**Est-ce une vraie app Mac aujourd'hui ?** Non. **Peut-elle le devenir avec la stack actuelle ?** En partie : en Qt, on peut atteindre environ 70 % du résultat (style natif, menus, Cmd+, fenêtre compacte). Mais la barre d'outils unifiée, la fenêtre Réglages au standard macOS, Coup d'œil, les notifications, le Trousseau, l'icône au format macOS 26 et un bundle autonome exigent tous de contourner Qt. **Ma recommandation : une interface SwiftUI qui pilote le worker Python existant**, avec un Python relocalisable embarqué dans l'app. Cela représente environ 13 à 22 jours de travail, sans notarisation.
 
 ---
 
@@ -100,7 +100,7 @@ Abréviations de gravité : **B** = Bloquant, **Ma** = Majeur, **Mi** = Mineur. 
 | ID | Constat | Statut | Réf. HIG | Grav. | Effort | Recommandation | Fichier:lignes |
 |---|---|---|---|---|---|---|---|
 | T1 | **Le `.app` n'est pas autonome.** Le lanceur C contient le chemin absolu du Python du `.venv` et le charge avec `dlopen`. Le code est copié dans `Resources`, mais pas les dépendances. Déplacer le dépôt ou le `.venv` casse l'app. | [Vu dans le code] | — | **B** (pour les collègues) | L | Embarquer un Python relocalisable (*python-build-standalone*) avec ses dépendances dans `Contents/Resources`. Le lancer comme processus de travail depuis une app SwiftUI (voir le lot 3). | `scripts/build_mac_app.py:28-41`, `scripts/mac_launcher.c` |
-| T2 | **Il n'y a ni signature, ni Hardened Runtime, ni notarisation.** Chez un collègue, Gatekeeper bloquera l'app ; sur les macOS récents, il faut passer par Réglages Système > Confidentialité > « Ouvrir quand même ». | Absence de signature : [Vu dans le code]. Comportement de Gatekeeper : [Hypothèse] | — | **B** (pour les collègues) | M | Souscrire l'Apple Developer Program (99 $/an), puis signer en Developer ID **toutes** les dylibs embarquées (Python, mlx, numpy), activer le Hardened Runtime et notariser avec `notarytool`. Les droits (entitlements) exacts sont à valider, par exemple `allow-unsigned-executable-memory` si MLX l'exige [Hypothèse]. | `scripts/build_mac_app.py` |
+| T2 | **Pas de signature ni de notarisation, et tu n'as pas de compte développeur.** Sur Apple Silicon, une signature *ad hoc* (`codesign -s -`) suffit pour lancer l'app sur ton Mac. Chez un collègue, un `.app` téléchargé ou reçu par messagerie est mis en quarantaine, et Gatekeeper le bloque. Depuis macOS 15, le contournement par clic droit > Ouvrir ne marche plus : il faut aller dans Réglages Système > Confidentialité et sécurité > « Ouvrir quand même », mot de passe administrateur à l'appui. **Sur un Mac géré par une entreprise (MDM), c'est souvent impossible.** Autre effet de la signature ad hoc : l'identité de l'app change à chaque reconstruction, ce qui fait redemander l'accès au Trousseau (E16) et les autorisations d'accès aux dossiers. | Absence de signature : [Vu dans le code]. Comportement de Gatekeeper, du MDM et du Trousseau : [Hypothèse] | — | Ma (accepté) | S | **Choix assumé pour l'instant.** (1) Signer tout le bundle en ad hoc pendant le build (`codesign --force --deep -s -`), y compris les dylibs embarquées. (2) Fournir une fiche d'installation d'une page (Ouvrir quand même), avec en secours la commande `xattr -dr com.apple.quarantine`. (3) Vérifier **avant tout développement** que les Mac de tes collègues autorisent ce contournement. (4) Structurer le build pour que le passage en Developer ID et à la notarisation ne demande qu'une étape de plus, le jour où tu prendras un compte. | `scripts/build_mac_app.py` |
 | T3 | Le PATH est forcé à `/opt/homebrew/bin` pour trouver FFmpeg, qui est un **prérequis externe** non embarqué. | [Vu dans le code] | — | **B** (pour les collègues) | M | Voir T5 : supprimer la dépendance à FFmpeg. | `desktop.py:460`, `scripts/mac_launcher.c:23-26`, `cli.py:114-121` |
 | T4 | Le style natif de Qt ne donne ni barre d'outils unifiée au standard Apple, ni scène `Settings`, ni Coup d'œil (`QLPreviewPanel`), ni `UNUserNotificationCenter`, ni Trousseau, ni Services, ni Partager. Chacun demanderait du pont Objective-C. **C'est le plafond de la stack actuelle.** | Ce plafond est une limite connue de Qt Widgets : [Hypothèse] | — | Ma | — | Voir la décision d'architecture (lot 3). | — |
 | T5 | Le décodage audio passe par le binaire `ffmpeg`, appelé par `mlx_whisper` à partir du chemin du fichier. | [Vu dans le code] (`run_whisper` passe un chemin) | — | Ma | M | Côté Swift : décoder avec **AVFoundation** (`AVAssetReader`) en PCM 16 kHz mono vers un WAV temporaire. Côté worker : lire ce WAV avec `wave` et numpy, puis passer le tableau à `mlx_whisper.transcribe`, qui accepte un `np.ndarray` [Hypothèse à vérifier]. FFmpeg n'est alors plus nécessaire. Limite : AVFoundation ne lit ni `.mkv`, ni `.webm`, ni `.ogg`, ni `.opus`, ni `.wma` [Hypothèse]. Il faut soit les refuser, soit embarquer un FFmpeg signé pour ces formats. | `cli.py:1451-1484`, `desktop_worker.py:113` |
@@ -111,8 +111,8 @@ Abréviations de gravité : **B** = Bloquant, **Ma** = Majeur, **Mi** = Mineur. 
 | T10 | **Aucune progression réelle de la transcription.** La barre est indéterminée pendant plusieurs minutes. C'est honnête, mais ce n'est pas informatif. | [Vu dans le code] | Progress indicators | Ma | M | `mlx_whisper` traite le fichier par segments. En exploitant la sortie de chaque segment (`verbose` ou un callback), on obtient un pourcentage *réel* (temps du segment divisé par la durée obtenue avec ffprobe ou AVFoundation). Afficher aussi la progression sur l'icône du Dock. | `desktop_worker.py:111-115` |
 | T11 | Le traitement ne bloque pas l'interface : il tourne dans un `QProcess` et l'interface lit les événements de façon asynchrone. **Point positif.** | [Vu dans le code] | — | — | — | Conserver ce protocole JSON-lines : c'est l'interface à garder entre SwiftUI et Python. | `desktop.py:457-503`, `desktop_worker.py` |
 | T12 | Les exports n'écrasent jamais un fichier existant (ouverture en mode `x` avec suffixe numérique). Les tests couvrent le cache, l'annulation et les erreurs. **Point positif.** | [Vu dans le code] | — | — | — | Conserver. | `desktop_worker.py:81-91`, `tests/test_desktop.py` |
-| T13 | **Pas de sandbox.** C'est acceptable hors App Store, mais l'historique demandera des signets pour rouvrir les fichiers dans le temps si un sandbox est ajouté plus tard. | Absence de sandbox : [Vu dans le code]. Besoin de signets : [Hypothèse] | — | Mi | — | Ne pas activer de sandbox pour la v1 distribuée en Developer ID. Stocker quand même les chemins sous forme de signets (bookmarks), qui survivent aux déplacements de fichiers. | — |
-| T14 | **Pas de mécanisme de mise à jour** : il faut reconstruire le lanceur à la main. | [Vu dans le code] | — | Mi | M | Utiliser **Sparkle** (signatures EdDSA, flux appcast sur GitHub Releases). | — |
+| T13 | **Pas de sandbox.** C'est acceptable hors App Store, mais l'historique demandera des signets pour rouvrir les fichiers dans le temps si un sandbox est ajouté plus tard. | Absence de sandbox : [Vu dans le code]. Besoin de signets : [Hypothèse] | — | Mi | — | Ne pas activer de sandbox pour la v1, distribuée hors App Store. Stocker quand même les chemins sous forme de signets (bookmarks), qui survivent aux déplacements de fichiers. | — |
+| T14 | **Pas de mécanisme de mise à jour** : il faut reconstruire le lanceur à la main. | [Vu dans le code] | — | Mi | S | Pour 1 ou 2 collègues sans compte développeur, Sparkle n'en vaut pas la peine : chaque mise à jour repasserait de toute façon par Gatekeeper [Hypothèse]. Livrer un `.zip` versionné, sur GitHub Releases ou par partage direct, et afficher la version dans « À propos ». Prévoir Sparkle seulement avec la notarisation. | — |
 | T15 | L'`Info.plist` est minimal. Il manque `LSMinimumSystemVersion`, `LSApplicationCategoryType`, `NSHumanReadableCopyright` et la restriction à arm64. La version est incohérente : `0.4.0` dans le plist, `0.1.0` dans `pyproject.toml`. | [Vu dans le code] | — | Mi | S | Compléter le plist et prendre une seule source pour la version. | `scripts/build_mac_app.py:43-53`, `pyproject.toml:7` |
 | T16 | **Poids estimé.** Le `.app` actuel fait moins de 1 Mo, mais c'est trompeur. PySide6 pèse plusieurs centaines de Mo et mlx plus numpy environ 200 Mo. Les modèles pèsent environ 3 Go pour large-v3 et 1,6 Go pour turbo, avec plusieurs Go de mémoire unifiée pendant la transcription. | [Hypothèse] | — | Mi | — | Une version SwiftUI avec Python embarqué, **sans PySide6**, devrait peser environ 250 à 400 Mo, modèles non compris [Hypothèse]. Remplacer Qt par SwiftUI fait gagner du poids, pas en perdre. | — |
 
@@ -150,7 +150,7 @@ Ce lot apporte des gains même si la migration vers SwiftUI ne se fait pas, ou e
 
 **Recommandation : SwiftUI pour l'interface, et le worker Python existant pour le moteur, en Python embarqué.**
 
-**Pourquoi.** Tu veux une vraie app Mac transmissible à des collègues. Qt peut s'en approcher pour l'apparence, mais pas pour l'intégration (Réglages, Coup d'œil, Trousseau, notifications, icône macOS 26, Sparkle) ni pour le packaging. Le protocole JSON-lines entre interface et worker est déjà propre : il suffit de changer l'interface.
+**Pourquoi.** Tu veux une vraie app Mac transmissible à des collègues. Qt peut s'en approcher pour l'apparence, mais pas pour l'intégration (Réglages, Coup d'œil, Trousseau, notifications, icône macOS 26) ni pour le packaging. Le protocole JSON-lines entre interface et worker est déjà propre : il suffit de changer l'interface.
 
 **Architecture cible**
 
@@ -163,7 +163,7 @@ Mp4ToTranscript.app
 │   ├── Process + JSON-lines ↔ worker (protocole existant)
 │   ├── SwiftData ou JSON : historique (+ bookmarks)
 │   ├── Keychain (clé OpenAI), UNUserNotificationCenter, NSDockTile (progression)
-│   └── Sparkle (mises à jour)
+│   └── (Sparkle plus tard, avec un compte développeur)
 └── Resources/python/  (python-build-standalone + mlx-whisper + mp4_to_transcript)
     └── python -m mp4_to_transcript.desktop_worker
 ```
@@ -175,14 +175,16 @@ Mp4ToTranscript.app
 | Partie | Durée |
 |---|---|
 | Interface SwiftUI | 6 à 10 jours |
-| Embarquement de Python, signature et notarisation (la partie risquée) | 5 à 8 jours |
+| Embarquement de Python et signature ad hoc (sans notarisation pour l'instant) | 3 à 5 jours |
 | Historique, modèles, finitions | 4 à 7 jours |
-| **Total** | **15 à 25 jours** |
+| **Total** | **13 à 22 jours** |
+| *Plus tard : passage en Developer ID et notarisation* | *2 à 4 jours, à prévoir le jour où tu prends un compte* |
 
 **Risques**
-1. **Signer et notariser un Python embarqué avec MLX** : chaque `.so` et `.dylib` doit être signé, et certains droits (entitlements) peuvent être nécessaires. Il faut faire un prototype de notarisation **en premier**, avant d'écrire l'interface.
-2. **Les formats que AVFoundation ne lit pas** (voir T5).
-3. **Deux langages à maintenir.**
+1. **Distribution sans notarisation** : le premier lancement chez un collègue passe par « Ouvrir quand même ». Sur un Mac géré par une entreprise, ce contournement peut être interdit. Il faut le tester sur leurs Mac **en premier**, avec un `.app` minimal (« Hello world »), avant d'écrire l'interface.
+2. **Notariser plus tard un Python embarqué avec MLX** : chaque `.so` et `.dylib` devra être signé, et certains droits (entitlements) pourront être nécessaires. Ce risque est reporté, pas supprimé.
+3. **Les formats que AVFoundation ne lit pas** (voir T5).
+4. **Deux langages à maintenir.**
 
 **Alternative à garder en tête, mais pas maintenant** : du 100 % Swift avec **WhisperKit** (CoreML), plus le portage en Swift des environ 1 500 lignes de rendu. C'est l'option la plus légère et la plus native, mais elle oblige à réécrire et à revalider tout le rendu. Elle ne se justifie que si l'embarquement de Python s'avère trop pénible à notariser.
 
