@@ -17,7 +17,7 @@ MACHO_MAGIC = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("app", type=Path)
 parser.add_argument("audio", type=Path)
-parser.add_argument("--model", default="mlx-community/whisper-large-v3-turbo")
+parser.add_argument("--model", default="mlx-community/whisper-large-v3-mlx")  # the app default
 args = parser.parse_args()
 
 with tempfile.TemporaryDirectory(prefix="transcription déplacée ") as directory:
