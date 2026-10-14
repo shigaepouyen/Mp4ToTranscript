@@ -1,7 +1,9 @@
 """Integration check: Launch Services cold/warm opens, using an isolated app ID."""
 import json
+import argparse
 import os
 import plistlib
+import shutil
 import subprocess
 import tempfile
 import time
@@ -10,14 +12,23 @@ from pathlib import Path
 
 from build_mac_app import build
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--app", type=Path, help="Test a copy of an existing standalone bundle")
+args = parser.parse_args()
 
 with tempfile.TemporaryDirectory(prefix="mp4-dock-test-") as directory:
     root = Path(directory)
-    app = build(root)
+    if args.app:
+        app = root / "Mp4ToTranscript.app"
+        shutil.copytree(args.app, app, symlinks=True)
+    else:
+        app = build(root)
     info_path = app / "Contents/Info.plist"
     info = plistlib.loads(info_path.read_bytes())
     info["CFBundleIdentifier"] += ".test." + uuid.uuid4().hex
     info_path.write_bytes(plistlib.dumps(info))
+    if args.app:
+        subprocess.run(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", str(app)], check=True)
     source1 = root / "premier fichier.wav"
     source2 = root / "deuxième fichier.mp4"
     source1.touch()

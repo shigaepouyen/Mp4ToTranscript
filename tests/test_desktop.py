@@ -8,6 +8,19 @@ from pathlib import Path
 from unittest import mock
 
 from mp4_to_transcript import desktop_worker as worker
+from mp4_to_transcript import runtime
+
+
+class RuntimeTests(unittest.TestCase):
+    def test_frozen_worker_uses_same_executable_and_bundled_tools(self):
+        with mock.patch.object(sys, "frozen", True, create=True), mock.patch.object(sys, "_MEIPASS", "/some movable app/Contents/Frameworks", create=True), mock.patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}):
+            runtime.configure_runtime()
+            self.assertEqual(runtime.worker_arguments(), ["--worker"])
+            self.assertEqual(os.environ["PATH"].split(os.pathsep)[0], "/some movable app/Contents/Frameworks/bin")
+
+    def test_source_worker_remains_a_python_module(self):
+        with mock.patch.object(sys, "frozen", False, create=True):
+            self.assertEqual(runtime.worker_arguments(), ["-u", "-m", "mp4_to_transcript.desktop_worker"])
 
 
 def options():
@@ -110,6 +123,17 @@ class WindowTests(unittest.TestCase):
     def setUpClass(cls):
         cls.platform_directory = prepare_macos_platform()
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_profile_description_follows_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = Window(QSettings(str(Path(directory) / "prefs.ini"), QSettings.Format.IniFormat))
+            descriptions = set()
+            for index in range(window.profile.count()):
+                window.profile.setCurrentIndex(index)
+                descriptions.add(window.profile_description.text())
+            self.assertEqual(len(descriptions), 3)
+            self.assertTrue(all(len(text) > 30 for text in descriptions))
+            window.close()
 
     def test_add_deduplicates_folders_retry_and_preferences_exclude_secrets(self):
         with tempfile.TemporaryDirectory() as directory:

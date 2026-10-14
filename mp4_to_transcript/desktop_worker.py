@@ -138,6 +138,8 @@ def main() -> int:
         emit("done", outputs=outputs)
         return 0
     except Exception as exc:
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         detail = f"{exc}\n{exc.__cause__}" if exc.__cause__ else str(exc)
         emit("error", text=detail)
         return 1

@@ -57,5 +57,10 @@ def build(destination: Path, python: str = sys.executable) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--destination", type=Path, default=Path("dist"))
+    parser.add_argument("--linked", action="store_true", help="Build the small developer launcher instead of the standalone app")
     args = parser.parse_args()
-    print(build(args.destination.resolve()))
+    if args.linked:
+        print(build(args.destination.resolve()))
+    else:
+        from build_standalone import build_standalone
+        print(build_standalone(args.destination, Path("build")))
