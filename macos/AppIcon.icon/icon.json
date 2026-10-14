@@ -1,0 +1,29 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:0.47843,0.58431,0.35294,1.00000",
+      "srgb:0.18039,0.26667,0.12549,1.00000"
+    ]
+  },
+  "groups" : [
+    {
+      "layers" : [
+        { "image-name" : "waveform.svg", "name" : "waveform" },
+        { "image-name" : "lines.svg", "name" : "lines" }
+      ],
+      "name" : "contenu",
+      "shadow" : { "kind" : "neutral", "opacity" : 0.4 }
+    },
+    {
+      "layers" : [
+        { "image-name" : "page.svg", "name" : "page" }
+      ],
+      "name" : "page",
+      "shadow" : { "kind" : "layer-color", "opacity" : 0.5 },
+      "translucency" : { "enabled" : true, "value" : 0.3 }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [ "macOS" ]
+  }
+}
