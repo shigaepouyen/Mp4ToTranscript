@@ -133,7 +133,7 @@ Abréviations de gravité : **B** = Bloquant, **Ma** = Majeur, **Mi** = Mineur. 
 | C5 | Design | **Les listes déroulantes ne sont pas natives** : coins carrés, triangle Fusion, pleine largeur. Un menu local macOS (`NSPopUpButton`) est arrondi, ajusté à son contenu, avec un double chevron. | [Vu sur capture 01] | Pop-up buttons | Ma | S | Réglé par D1 en Qt. En SwiftUI : `Picker` en style `.menu`, placé dans la barre d'outils. |
 | C6 | Ergonomie | **La feuille Réglages enfreint les conventions des formulaires macOS** : <br>• libellés alignés à gauche, sans deux-points (sur Mac : alignés à droite, « Modèle : ») ; <br>• « Repères » répète la case « Inclure les repères de temps » ; <br>• le champ **Clé OpenAI reste actif même quand l'enrichissement est décoché** ; <br>• la destination est un champ texte libre ; <br>• le bouton « Terminé » occupe toute la largeur au lieu d'être aligné en bas à droite. | [Vu sur capture 02] | Settings ; Layout | Ma | S | Une fenêtre Réglages (Cmd+,), sans bouton de validation. Libellés à droite. Cases sans libellé redondant. Clé OpenAI désactivée, ou masquée, tant que l'enrichissement est décoché. Destination en menu local : « À côté de la source » / « Choisir… », avec le chemin affiché en `NSPathControl`. |
 | C7 | Design | **La case à cocher est non native**, avec une coche ✓ noire sur fond blanc, sans la couleur d'accentuation. | [Vu sur capture 02] | Toggles ; Color | Mi | S | Réglé par D1. |
-| C8 | Ergonomie | **Le panneau Réglages arrondi et centré suggère macOS 26.** Si c'est confirmé, l'icône (D6) risque d'être affichée dans un fond gris générique. | [Hypothèse fondée sur la capture 02] | App icons | Ma | M | Confirmer la version de macOS. Si c'est macOS 26, l'icône Icon Composer passe au lot 1. |
+| C8 | Design | **Le Mac tourne sous macOS 26 (confirmé).** Une icône qui ne suit pas le gabarit (D6) risque d'être affichée réduite dans un fond gris générique. Et Qt 6.8 ne reprend pas le style Liquid Glass de macOS 26 (barres d'outils et contrôles translucides) : même avec le style natif rétabli, l'écart avec les apps Apple reste visible. | Version : confirmée par toi. Rendu de l'icône et de Qt : [Hypothèse] | App icons ; Materials | Ma | M | Faire passer l'icône Icon Composer (`.icon`) dans le **lot 1**. C'est un argument de plus pour SwiftUI : compilée avec le SDK de macOS 26, une app SwiftUI obtient Liquid Glass sans effort. |
 | C9 | Ergonomie | **La description du profil est une bonne idée mal placée** : elle ajoute une 12e bande permanente pour une information utile seulement au moment du choix. | [Vu sur capture 01] | Help ; Tooltips | Mi | S | La mettre en sous-titre de chaque option du menu Profil, ou en bulle d'aide. |
 
 ## 3. Plan d'action
@@ -149,6 +149,8 @@ Ce lot apporte des gains même si la migration vers SwiftUI ne se fait pas, ou e
 5. **D3, D7, E7 : alléger la fenêtre.** Retirer le titre et fusionner les trois lignes de statut en une. Envoyer le Format dans les Réglages.
 6. **E11, E17, E18, T9 : corriger les petits défauts.** Mémoriser la géométrie de la fenêtre, enregistrer les réglages immédiatement, confirmer avant de fermer pendant un traitement, intercepter SIGTERM.
 7. **E15 : renommer le profil** « Compte rendu (structuré) ».
+8. **D6, C8 : refaire l'icône dans Icon Composer** (format `.icon`), puisque tu es sous macOS 26. Ce travail sera réutilisé tel quel dans la version SwiftUI.
+9. **C4, C6 : corriger la feuille Réglages.** Désactiver la clé OpenAI quand l'enrichissement est décoché, aligner les libellés à droite, masquer les boutons qui ne servent pas au repos.
 
 ### Lot 2 : améliorations structurantes, à faire de préférence directement en SwiftUI
 
@@ -174,7 +176,7 @@ Ce lot apporte des gains même si la migration vers SwiftUI ne se fait pas, ou e
 
 ```
 Mp4ToTranscript.app
-├── SwiftUI (macOS 14+, arm64)
+├── SwiftUI (cible macOS 26, minimum macOS 15 si un collègue n'est pas à jour ; arm64)
 │   ├── WindowGroup unique : NavigationSplitView (Historique | Dépôt → Progression → Résultat)
 │   ├── Settings scene (Général · Modèles · Enrichissement)
 │   ├── AVFoundation : décodage → WAV 16 kHz temporaire (remplace FFmpeg)
