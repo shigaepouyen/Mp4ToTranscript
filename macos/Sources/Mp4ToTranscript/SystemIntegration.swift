@@ -33,7 +33,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate, @unchecked Sen
 
     @MainActor
     func jobEnded(source: String, output: URL?, failure: String?) {
-        guard !NSApp.isActive else { return }
+        guard !NSApp.isActive else {
+            log.notice("Pas de notification : l’app est au premier plan")
+            return
+        }
         let content = UNMutableNotificationContent()
         if let output {
             content.title = "Transcription terminée"
@@ -54,6 +57,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate, @unchecked Sen
             }
             do {
                 try await center.add(request)
+                log.notice("Notification remise au système : \(content.title, privacy: .public)")
             } catch {
                 log.error("Notification impossible : \(String(describing: error), privacy: .public)")
             }
