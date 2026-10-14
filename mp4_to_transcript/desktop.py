@@ -21,6 +21,13 @@ from PySide6.QtWidgets import (
 )
 
 from .cli import collect_input_files
+from .runtime import configure_runtime, worker_arguments
+
+PROFILE_DESCRIPTIONS = {
+    "clean": "Conserve le contenu, retire certaines hésitations et répétitions et harmonise la ponctuation. Ne résume pas.",
+    "raw": "Restitue le texte reconnu par Whisper, avec un minimum de retouches. Idéal pour conserver le verbatim.",
+    "meeting-plus": "Organise le contenu en résumé, sujets, décisions et actions, avec le verbatim en annexe. Règles locales par défaut ; synthèse IA avec l’option OpenAI.",
+}
 
 
 class TranscriptViewer(QMainWindow):
@@ -167,6 +174,13 @@ class Window(QMainWindow):
             index = widget.findData(self.settings.value(key, widget.itemData(0)))
             widget.setCurrentIndex(max(0, index))
         layout.addWidget(self.controls)
+        self.profile_description = QLabel()
+        self.profile_description.setWordWrap(True)
+        self.profile_description.setTextFormat(Qt.TextFormat.PlainText)
+        self.profile_description.setMinimumHeight(38)
+        self.profile.currentIndexChanged.connect(self.update_profile_description)
+        self.update_profile_description()
+        layout.addWidget(self.profile_description)
 
         self.advanced_toggle = QPushButton("Réglages…")
         self.advanced_toggle.setFlat(True)
@@ -284,6 +298,9 @@ class Window(QMainWindow):
         shortcut.triggered.connect(self.choose_files)
         self.addAction(shortcut)
         self.update_controls()
+
+    def update_profile_description(self):
+        self.profile_description.setText(PROFILE_DESCRIPTIONS[self.profile.currentData()])
 
     def options(self):
         return {"mode": self.profile.currentData(), "language": self.language.currentData(),
@@ -457,7 +474,8 @@ class Window(QMainWindow):
         process = QProcess(self)
         self.process = process
         env = QProcessEnvironment.systemEnvironment()
-        env.insert("PATH", "/opt/homebrew/bin:/usr/local/bin:" + env.value("PATH"))
+        if not getattr(sys, "frozen", False):
+            env.insert("PATH", "/opt/homebrew/bin:/usr/local/bin:" + env.value("PATH"))
         for key in ["MallocStackLogging", "MallocStackLoggingNoCompact"]:
             env.remove(key)
         process.setProcessEnvironment(env)
@@ -472,7 +490,7 @@ class Window(QMainWindow):
             process.write((json.dumps(request) + "\n").encode())
             process.closeWriteChannel()
         process.started.connect(send_request)
-        process.start(sys.executable, ["-u", "-m", "mp4_to_transcript.desktop_worker"])
+        process.start(sys.executable, worker_arguments())
         self.refresh()
         self.table.selectRow(self.jobs.index(pending))
 
@@ -592,6 +610,7 @@ def prepare_macos_platform():
 
 
 def main():
+    configure_runtime()
     platform_directory = prepare_macos_platform()
     app = DesktopApplication(sys.argv)
     app.setApplicationName("Mp4ToTranscript")

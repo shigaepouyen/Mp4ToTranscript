@@ -16,9 +16,11 @@ python3 -m venv .venv
 .venv/bin/python -m mp4_to_transcript.desktop
 ```
 
-Pour créer un lanceur utilisable par double-clic ou depuis le Dock :
+Pour créer l’application autonome utilisable par double-clic ou depuis le Dock
+(FFmpeg doit être installé sur le Mac de construction) :
 
 ```bash
+.venv/bin/python -m pip install -e ".[desktop,build]"
 .venv/bin/python scripts/build_mac_app.py
 open dist/Mp4ToTranscript.app
 ```
@@ -28,9 +30,11 @@ open dist/Mp4ToTranscript.app
 `Mp4ToTranscript.app`. Il n’est pas nécessaire de relancer les commandes
 d’installation à chaque utilisation.
 
-Pour un accès quotidien, glisser `Mp4ToTranscript.app` dans le Dock. Le lanceur
-peut aussi être déplacé dans Applications, mais le dossier du projet et son
-environnement `.venv` doivent rester à leur emplacement d’origine.
+Pour un accès quotidien, déplacer `Mp4ToTranscript.app` dans Applications puis
+la glisser dans le Dock. Depuis la version 0.5, le `.app` embarque Python, Qt,
+MLX/Whisper, FFmpeg et FFprobe : il peut être déplacé sans le projet ni `.venv`.
+L’ensemble du `.app` doit rester intact. Les modèles téléchargés et le cache de
+transcription sont conservés séparément sur le Mac et réutilisés après déplacement.
 
 Le glisser-déposer est pris en charge **dans la fenêtre et sur l’icône du Dock**,
 même si l’app est fermée. Les fichiers ou dossiers sont ajoutés à la file ;
@@ -42,17 +46,18 @@ relancer l’application pour voir la nouvelle icône. Sa source vectorielle est
 dans `mp4_to_transcript/assets/app-icon.svg` ; `scripts/build_icon.py` régénère
 les fichiers PNG et ICNS.
 
-Le `.app` contient une copie du code et utilise l’environnement Python avec lequel
-il a été construit. Conserver cet environnement au même emplacement ; reconstruire
-le lanceur après une mise à jour du code. Ce lanceur personnel n’est pas une
-distribution autonome signée pour d’autres Mac.
+L’app cible Apple Silicon. Elle contient une signature locale de construction,
+mais pas une signature Developer ID ni une notarisation Apple pour une diffusion
+publique. Les modèles ne sont pas inclus : un modèle absent nécessite un premier
+téléchargement. La diarisation reste une fonction de la CLI, pas de l’interface.
 
 La version Qt est fixée à 6.8.3, validée avec une vraie fenêtre macOS. Le journal
 du lanceur se trouve dans `~/Library/Logs/Mp4ToTranscript/launch.log`.
-Le build utilise les outils de ligne de commande Xcode (`xcrun clang`) et un
-Python macOS de type framework (par exemple Python Homebrew). Le lanceur natif
-charge ce Python dans son propre processus pour conserver l’identité de l’app,
-son icône et la réception des fichiers envoyés par macOS.
+Le build autonome utilise PyInstaller et conserve la réception des fichiers
+envoyés par macOS. Pour les développeurs, `scripts/build_mac_app.py --linked`
+produit encore un petit lanceur lié au Python du projet ; **cette variante seule**
+nécessite de conserver `.venv` et le projet à leur emplacement. Elle utilise
+`xcrun clang` et un Python macOS de type framework.
 
 Si le Finder conserve une ancienne icône après reconstruction, quitter puis
 relancer l’app. Si nécessaire, retirer uniquement son raccourci du Dock et y
@@ -67,6 +72,15 @@ glisser la nouvelle copie du `.app`.
 
 **Lire en grand** ouvre le transcript complet dans une fenêtre indépendante,
 redimensionnable, avec plein écran, zoom et copie. Échap quitte le plein écran.
+
+Une description s’affiche sous le profil sélectionné :
+
+- **Texte nettoyé** : conserve le contenu, réduit certaines hésitations et
+  répétitions, harmonise la ponctuation ; ne résume pas.
+- **Transcription brute** : texte reconnu par Whisper, avec un minimum de retouches.
+- **Compte rendu** : organise le contenu en résumé, sujets, décisions et actions,
+  avec le verbatim en annexe. Utilise des règles locales ; la synthèse OpenAI
+  nécessite d’activer explicitement cette option.
 
 Le traitement affiche cinq étapes : vérification du fichier, vérification du
 modèle, préparation du moteur, transcription, création du résultat. Le temps
@@ -116,6 +130,19 @@ fenêtre refermée automatiquement) :
 ```bash
 .venv/bin/python scripts/test_mac_open.py
 ```
+
+Pour vérifier la version autonome construite :
+
+```bash
+.venv/bin/python scripts/test_mac_open.py --app dist/Mp4ToTranscript.app
+.venv/bin/python scripts/test_standalone.py dist/Mp4ToTranscript.app /chemin/vers/test.wav
+```
+
+Le second test déplace une copie de l’app dans un dossier temporaire, contrôle
+ses dépendances natives, ouvre la fenêtre et effectue une transcription avec
+un cache de transcription vide et les téléchargements désactivés. Le modèle
+`mlx-community/whisper-large-v3-turbo` doit déjà être présent sur le Mac
+(ou préciser `--model`). Aucun appel OpenAI n’est effectué.
 
 ## Prerequis
 
