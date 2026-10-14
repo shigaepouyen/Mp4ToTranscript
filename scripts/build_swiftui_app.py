@@ -45,12 +45,33 @@ def build_interface() -> Path:
     return Path(binary) / NAME
 
 
+def install_icon(resources: Path) -> bool:
+    """Compile macos/AppIcon.icon (Icon Composer) with actool, from Xcode.
+
+    Without Xcode, fall back to the flat macos/Resources/AppIcon.icns.
+    Returns True when the Liquid Glass icon (Assets.car) was installed.
+    """
+    try:
+        subprocess.run(["xcrun", "--find", "actool"], check=True, capture_output=True)
+    except (OSError, subprocess.CalledProcessError):
+        shutil.copy2(ROOT / "macos/Resources/AppIcon.icns", resources / "AppIcon.icns")
+        print("actool absent (Xcode non installé) : icône .icns de secours")
+        return False
+    with tempfile.TemporaryDirectory() as partial:
+        subprocess.run(["xcrun", "actool", str(ROOT / "macos/AppIcon.icon"), "--compile", str(resources),
+                        "--app-icon", "AppIcon", "--platform", "macosx",
+                        "--minimum-deployment-target", "26.0", "--target-device", "mac",
+                        "--output-partial-info-plist", str(Path(partial) / "icon.plist")],
+                       check=True, capture_output=True)
+    return True
+
+
 def info_plist(bundle_id: str, version: str) -> dict:
     return {
         "CFBundleName": NAME, "CFBundleDisplayName": NAME, "CFBundleExecutable": NAME,
         "CFBundleIdentifier": bundle_id, "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": version, "CFBundleVersion": version,
-        "CFBundleIconFile": "AppIcon", "CFBundleDevelopmentRegion": "fr",
+        "CFBundleIconFile": "AppIcon", "CFBundleIconName": "AppIcon", "CFBundleDevelopmentRegion": "fr",
         "LSMinimumSystemVersion": "26.0", "LSArchitecturePriority": ["arm64"],
         "LSApplicationCategoryType": "public.app-category.productivity",
         "NSHighResolutionCapable": True,
@@ -101,7 +122,7 @@ def assemble(destination: Path, work: Path, bundle_id: str, version: str,
     (app / "Contents/Resources").mkdir()
     shutil.copy2(interface, app / "Contents/MacOS" / NAME)
     shutil.copytree(worker, app / "Contents/Helpers" / WORKER_APP, symlinks=True)
-    shutil.copy2(ROOT / "macos/Resources/AppIcon.icns", app / "Contents/Resources/AppIcon.icns")
+    install_icon(app / "Contents/Resources")
     with (app / "Contents/Info.plist").open("wb") as stream:
         plistlib.dump(info_plist(bundle_id, version), stream)
     (app / "Contents/PkgInfo").write_text("APPL????")
