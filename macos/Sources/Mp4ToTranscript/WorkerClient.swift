@@ -134,6 +134,7 @@ final class TranscriptionEngine {
         startedAt = .now
         phase = .running(step: 0, title: "Démarrage du traitement…", detail: "Préparation du moteur de transcription.")
         entryID = HistoryStore.shared.begin(source: file, options: options)
+        Notifier.shared.requestPermissionIfNeeded()
 
         let request: [String: Any] = [
             "source": file.path,

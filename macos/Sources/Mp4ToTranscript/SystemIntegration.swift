@@ -1,13 +1,34 @@
 import AppKit
+import OSLog
 import UserNotifications
 
 /// End-of-job notifications, only when the app is in the background.
 /// Clicking one opens the result.
 final class Notifier: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     static let shared = Notifier()
+    private let log = Logger(subsystem: "io.github.shigaepouyen.mp4totranscript", category: "notifications")
 
     func setUp() {
         UNUserNotificationCenter.current().delegate = self
+    }
+
+    /// Asked when the first job starts: the app is in front and the user has just acted.
+    /// Asking at the end, from the background, only shows an easily dismissed banner.
+    func requestPermissionIfNeeded() {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            guard await center.notificationSettings().authorizationStatus == .notDetermined else { return }
+            do {
+                let granted = try await center.requestAuthorization(options: [.alert, .sound])
+                log.notice("Autorisation des notifications : \(granted, privacy: .public)")
+            } catch {
+                log.error("Demande d’autorisation impossible : \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
 
     @MainActor
@@ -26,15 +47,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate, @unchecked Sen
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         Task {
             let center = UNUserNotificationCenter.current()
-            // Asked at the first background completion, when the benefit is obvious.
+            let status = await center.notificationSettings().authorizationStatus
+            guard status == .authorized || status == .provisional else {
+                log.notice("Notification non envoyée, autorisation : \(status.rawValue, privacy: .public)")
+                return
+            }
             do {
-                guard try await center.requestAuthorization(options: [.alert, .sound]) else {
-                    NSLog("Notifications refusées par l’utilisateur")
-                    return
-                }
                 try await center.add(request)
             } catch {
-                NSLog("Notification impossible : \(error)")
+                log.error("Notification impossible : \(String(describing: error), privacy: .public)")
             }
         }
     }

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 /// Réglages (⌘,) : appliqués immédiatement, sans bouton de validation.
 struct SettingsView: View {
@@ -19,6 +20,7 @@ private struct GeneralSettings: View {
     @AppStorage(Preference.timestamps) private var timestamps = false
     @AppStorage(Preference.prompt) private var prompt = ""
     @State private var choosingFolder = false
+    @State private var notifications: UNAuthorizationStatus?
 
     private static let chooseTag = "\u{0}choose"
 
@@ -60,6 +62,19 @@ private struct GeneralSettings: View {
                 Toggle("Inclure les repères de temps", isOn: $timestamps)
             }
 
+            LabeledContent("Notifications :") {
+                HStack(spacing: 8) {
+                    Text(notificationText)
+                        .foregroundStyle(.secondary)
+                    if notifications != .authorized && notifications != .provisional {
+                        Button("Ouvrir les Réglages Système…") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
+                        }
+                    }
+                }
+            }
+            .help("Une notification signale la fin d’une transcription quand l’app est en arrière-plan.")
+
             TextField("Contexte :", text: $prompt,
                       prompt: Text("Noms propres, jargon, sujet de la réunion…"), axis: .vertical)
                 .lineLimit(2...4)
@@ -72,6 +87,20 @@ private struct GeneralSettings: View {
         }
         .formStyle(.columns)
         .padding(24)
+        .task { notifications = await Notifier.shared.authorizationStatus() }
+        // Back from System Settings: the user may have changed the permission.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { notifications = await Notifier.shared.authorizationStatus() }
+        }
+    }
+
+    private var notificationText: String {
+        switch notifications {
+        case .authorized, .provisional: "Activées"
+        case .denied: "Désactivées"
+        case .notDetermined: "Pas encore demandées"
+        default: "…"
+        }
     }
 
     /// The « Choisir un dossier… » item opens the folder picker instead of being selected.
