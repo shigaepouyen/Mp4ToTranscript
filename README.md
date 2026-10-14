@@ -39,9 +39,9 @@ L’ensemble du `.app` doit rester intact. Les modèles téléchargés et le cac
 transcription sont conservés séparément sur le Mac et réutilisés après déplacement.
 
 Le glisser-déposer est pris en charge **dans la fenêtre et sur l’icône du Dock**,
-même si l’app est fermée. Les fichiers ou dossiers sont ajoutés à la file ;
-choisir ensuite un profil et cliquer sur Transcrire. Un dépôt ne déclenche pas
-automatiquement de traitement ni d’appel OpenAI. « Ouvrir avec » dans le Finder
+même si l’app est fermée. La transcription démarre aussitôt, avec le profil, la
+langue et les réglages affichés. Si l’enrichissement OpenAI est activé, l’app
+demande d’abord confirmation avant d’envoyer le texte. « Ouvrir avec » dans le Finder
 fonctionne également. L’app ne remplace pas votre lecteur multimédia par défaut.
 L’application dispose d’une icône dans le Finder et le Dock. Après mise à jour,
 relancer l’application pour voir la nouvelle icône. Sa source vectorielle est
@@ -67,9 +67,10 @@ glisser la nouvelle copie du `.app`.
 
 ### Utilisation
 
-1. Déposer des fichiers ou dossiers **dans la fenêtre**, ou utiliser les boutons
-   Ajouter. Les sous-dossiers sont inclus et les doublons ignorés.
-2. Choisir Texte nettoyé, Transcription brute ou Compte rendu, puis Transcrire.
+1. Choisir Texte nettoyé, Transcription brute ou Compte rendu, et la langue.
+2. Déposer des fichiers ou dossiers **dans la fenêtre**, ou utiliser les boutons
+   Ajouter : la transcription démarre aussitôt. Les sous-dossiers sont inclus et
+   les doublons ignorés. Le bouton Transcrire relance les fichiers restés en attente.
 3. Sélectionner un résultat pour le prévisualiser, le copier ou l’afficher dans le Finder.
 
 **Lire en grand** ouvre le transcript complet dans une fenêtre indépendante,
